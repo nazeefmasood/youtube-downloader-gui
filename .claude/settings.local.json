@@ -16,7 +16,11 @@
       "Bash(/home/personal/Developer/youtube-downloader-gui/binaries/yt-dlp-linux:*)",
       "Bash(npm run:*)",
       "Bash(./binaries/yt-dlp-linux:*)",
-      "Bash(node -e:*)"
+      "Bash(node -e:*)",
+      "Bash(convert:*)",
+      "Bash(apt list:*)",
+      "Bash(npx --yes icon-gen:*)",
+      "Bash(npx --yes electron-icon-builder --input=resources/icon.png --output=resources --flatten)"
     ]
   }
 }

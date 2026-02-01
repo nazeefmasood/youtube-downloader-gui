@@ -679,13 +679,13 @@ html, body, #root {
   min-height: 0;
 }
 
-/* Add space for fixed progress bar when downloading */
-.main-content.downloading {
-  margin-bottom: 70px;
+/* Add padding to content panel only when progress bar is visible */
+.main-content.downloading .content-panel {
+  padding-bottom: 70px;
 }
 
 .main-content > * {
-  height: 100%;
+  align-self: stretch;
 }
 
 /* ============================================
@@ -1463,6 +1463,7 @@ html, body, #root {
 
 .side-panel {
   width: 320px;
+  height: 100%;
   flex-shrink: 0;
   background: var(--bg-secondary);
   display: flex;
@@ -1470,13 +1471,12 @@ html, body, #root {
   animation: slideInRight 0.5s cubic-bezier(0.4, 0, 0.2, 1);
   transition: background-color 0.3s ease;
   border-left: 1px solid var(--border);
-  position: relative;
-  padding-bottom: 70px;
 }
 
 .side-panel-content {
   flex: 1;
   overflow-y: auto;
+  min-height: 0;
 }
 
 .panel-section {
@@ -1622,14 +1622,12 @@ html, body, #root {
 
 /* Download Button */
 .panel-actions {
-  position: absolute;
-  bottom: 0;
-  left: 0;
-  right: 0;
   padding: 16px;
   border-top: 1px solid var(--border);
   transition: border-color 0.3s ease;
   background: var(--bg-secondary);
+  flex-shrink: 0;
+  margin-top: auto;
 }
 
 .btn-download {
@@ -2223,4 +2221,52 @@ html, body, #root {
 
 [data-theme="light"] .success-title {
   text-shadow: none;
+}
+
+/* ============================================
+   KEYBOARD SHORTCUT HINTS
+   ============================================ */
+
+.shortcut-hint {
+  font-size: 9px;
+  font-weight: 500;
+  letter-spacing: 0.05em;
+  padding: 2px 6px;
+  background: rgba(0, 0, 0, 0.2);
+  border-radius: 2px;
+  margin-left: 8px;
+  opacity: 0.7;
+  text-transform: none;
+}
+
+.btn-download .shortcut-hint {
+  background: rgba(0, 0, 0, 0.15);
+}
+
+.btn-download.btn-stop .shortcut-hint {
+  background: rgba(0, 0, 0, 0.2);
+}
+
+.btn-success .shortcut-hint,
+.btn-outline .shortcut-hint {
+  font-size: 9px;
+  padding: 2px 6px;
+  margin-left: 8px;
+}
+
+.btn-success .shortcut-hint {
+  background: rgba(0, 0, 0, 0.15);
+}
+
+.btn-outline .shortcut-hint {
+  background: var(--bg-tertiary);
+  color: var(--text-muted);
+}
+
+[data-theme="light"] .shortcut-hint {
+  background: rgba(0, 0, 0, 0.1);
+}
+
+[data-theme="light"] .btn-outline .shortcut-hint {
+  background: var(--border);
 }

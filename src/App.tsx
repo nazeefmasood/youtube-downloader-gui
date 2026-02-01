@@ -165,6 +165,104 @@ function App() {
     window.electronAPI.openFolder(settings.downloadPath || '')
   }, [settings.downloadPath])
 
+  // Global keyboard shortcuts
+  useEffect(() => {
+    const handleGlobalKeyDown = (e: KeyboardEvent) => {
+      // Don't trigger shortcuts when typing in input fields (except specific ones)
+      const target = e.target as HTMLElement
+      const isInputField = target.tagName === 'INPUT' || target.tagName === 'TEXTAREA' || target.isContentEditable
+
+      // Ctrl+V - Paste & Analyze URL (only when URL input is empty and focused or when not in input)
+      if (e.ctrlKey && e.key === 'v' && !urlInput.trim() && !isDetecting && !isDownloading) {
+        // Let the paste happen naturally in the input field
+        return
+      }
+
+      // Ctrl+Enter - Start Download
+      if (e.ctrlKey && e.key === 'Enter' && selectedFormat && !isDownloading && contentInfo) {
+        e.preventDefault()
+        handleStartDownload()
+        return
+      }
+
+      // Escape - Cancel/Abort
+      if (e.key === 'Escape') {
+        if (isDetecting) {
+          e.preventDefault()
+          cancelDetection()
+        } else if (isDownloading) {
+          e.preventDefault()
+          cancelDownload()
+        } else if (showSuccess) {
+          e.preventDefault()
+          handleReset()
+        }
+        return
+      }
+
+      // Skip other shortcuts if in input field
+      if (isInputField) return
+
+      // Ctrl+O - Open Download Folder
+      if (e.ctrlKey && e.key === 'o' && showSuccess) {
+        e.preventDefault()
+        handleOpenFolder()
+        return
+      }
+
+      // Ctrl+N - New Download (Reset)
+      if (e.ctrlKey && e.key === 'n') {
+        e.preventDefault()
+        handleReset()
+        return
+      }
+
+      // Ctrl+1 - Switch to Downloads tab
+      if (e.ctrlKey && e.key === '1') {
+        e.preventDefault()
+        setView('downloads')
+        return
+      }
+
+      // Ctrl+2 - Switch to History tab
+      if (e.ctrlKey && e.key === '2') {
+        e.preventDefault()
+        setView('history')
+        return
+      }
+
+      // Ctrl+3 - Switch to Settings tab
+      if (e.ctrlKey && e.key === '3') {
+        e.preventDefault()
+        setView('settings')
+        return
+      }
+
+      // Ctrl+L - Toggle Light/Dark mode
+      if (e.ctrlKey && e.key === 'l') {
+        e.preventDefault()
+        toggleTheme()
+        return
+      }
+    }
+
+    window.addEventListener('keydown', handleGlobalKeyDown)
+    return () => window.removeEventListener('keydown', handleGlobalKeyDown)
+  }, [
+    urlInput,
+    selectedFormat,
+    isDownloading,
+    isDetecting,
+    showSuccess,
+    contentInfo,
+    handleStartDownload,
+    handleReset,
+    handleOpenFolder,
+    cancelDetection,
+    cancelDownload,
+    toggleTheme,
+  ])
+
   const formatDuration = (seconds?: number) => {
     if (!seconds) return '--:--'
     const mins = Math.floor(seconds / 60)
@@ -205,7 +303,7 @@ function App() {
 
       {/* Toolbar */}
       <div className="toolbar">
-        <button className={`toolbar-btn ${view === 'downloads' ? 'active' : ''}`} onClick={() => setView('downloads')}>
+        <button className={`toolbar-btn ${view === 'downloads' ? 'active' : ''}`} onClick={() => setView('downloads')} title="Downloads (Ctrl+1)">
           <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
             <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
             <polyline points="7 10 12 15 17 10"/>
@@ -214,7 +312,7 @@ function App() {
           <span>Downloads</span>
         </button>
 
-        <button className={`toolbar-btn ${view === 'history' ? 'active' : ''}`} onClick={() => setView('history')}>
+        <button className={`toolbar-btn ${view === 'history' ? 'active' : ''}`} onClick={() => setView('history')} title="History (Ctrl+2)">
           <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
             <circle cx="12" cy="12" r="10"/>
             <polyline points="12 6 12 12 16 14"/>
@@ -222,7 +320,7 @@ function App() {
           <span>History</span>
         </button>
 
-        <button className={`toolbar-btn ${view === 'settings' ? 'active' : ''}`} onClick={() => setView('settings')}>
+        <button className={`toolbar-btn ${view === 'settings' ? 'active' : ''}`} onClick={() => setView('settings')} title="Settings (Ctrl+3)">
           <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
             <path d="M12.22 2h-.44a2 2 0 0 0-2 2v.18a2 2 0 0 1-1 1.73l-.43.25a2 2 0 0 1-2 0l-.15-.08a2 2 0 0 0-2.73.73l-.22.38a2 2 0 0 0 .73 2.73l.15.1a2 2 0 0 1 1 1.72v.51a2 2 0 0 1-1 1.74l-.15.09a2 2 0 0 0-.73 2.73l.22.38a2 2 0 0 0 2.73.73l.15-.08a2 2 0 0 1 2 0l.43.25a2 2 0 0 1 1 1.73V20a2 2 0 0 0 2 2h.44a2 2 0 0 0 2-2v-.18a2 2 0 0 1 1-1.73l.43-.25a2 2 0 0 1 2 0l.15.08a2 2 0 0 0 2.73-.73l.22-.39a2 2 0 0 0-.73-2.73l-.15-.08a2 2 0 0 1-1-1.74v-.5a2 2 0 0 1 1-1.74l.15-.09a2 2 0 0 0 .73-2.73l-.22-.38a2 2 0 0 0-2.73-.73l-.15.08a2 2 0 0 1-2 0l-.43-.25a2 2 0 0 1-1-1.73V4a2 2 0 0 0-2-2z"/>
             <circle cx="12" cy="12" r="3"/>
@@ -233,7 +331,7 @@ function App() {
         <div className="toolbar-spacer" />
 
         {/* Theme Toggle */}
-        <button className="theme-toggle" onClick={toggleTheme} title={`Switch to ${theme === 'dark' ? 'light' : 'dark'} mode`}>
+        <button className="theme-toggle" onClick={toggleTheme} title={`Switch to ${theme === 'dark' ? 'light' : 'dark'} mode (Ctrl+L)`}>
           {theme === 'dark' ? (
             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
               <circle cx="12" cy="12" r="5"/>
@@ -253,7 +351,7 @@ function App() {
           )}
         </button>
 
-        <button className="toolbar-btn" onClick={handleReset} disabled={isDownloading}>
+        <button className="toolbar-btn" onClick={handleReset} disabled={isDownloading} title="New Download (Ctrl+N)">
           <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
             <path d="M3 6h18M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/>
           </svg>
@@ -485,17 +583,19 @@ function App() {
                 {/* Download Button */}
                 <div className="panel-actions">
                   {isDownloading ? (
-                    <button className="btn-download btn-stop" onClick={cancelDownload}>
+                    <button className="btn-download btn-stop" onClick={cancelDownload} title="Escape">
                       <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor">
                         <rect x="6" y="6" width="12" height="12"/>
                       </svg>
                       ABORT DOWNLOAD
+                      <span className="shortcut-hint">Esc</span>
                     </button>
                   ) : (
                     <button
                       className="btn-download"
                       onClick={handleStartDownload}
                       disabled={!selectedFormat || isLoadingFormats}
+                      title="Ctrl+Enter"
                     >
                       <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
                         <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
@@ -503,6 +603,7 @@ function App() {
                         <line x1="12" y1="15" x2="12" y2="3"/>
                       </svg>
                       EXECUTE DOWNLOAD
+                      <span className="shortcut-hint">Ctrl+Enter</span>
                     </button>
                   )}
                 </div>
@@ -691,17 +792,19 @@ function App() {
               // All files have been successfully downloaded to your system
             </div>
             <div className="success-actions">
-              <button className="btn-success" onClick={handleOpenFolder}>
+              <button className="btn-success" onClick={handleOpenFolder} title="Ctrl+O">
                 <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" style={{ marginRight: 8 }}>
                   <path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/>
                 </svg>
                 OPEN FOLDER
+                <span className="shortcut-hint">Ctrl+O</span>
               </button>
-              <button className="btn-outline" onClick={handleReset}>
+              <button className="btn-outline" onClick={handleReset} title="Ctrl+N">
                 <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" style={{ marginRight: 8 }}>
                   <path d="M12 5v14M5 12h14"/>
                 </svg>
                 NEW DOWNLOAD
+                <span className="shortcut-hint">Ctrl+N</span>
               </button>
             </div>
           </div>
