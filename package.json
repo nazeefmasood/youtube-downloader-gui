@@ -64,6 +64,11 @@
         "from": "binaries/",
         "to": "binaries/",
         "filter": ["**/*"]
+      },
+      {
+        "from": "assets/",
+        "to": "assets/",
+        "filter": ["**/*"]
       }
     ],
     "asarUnpack": [

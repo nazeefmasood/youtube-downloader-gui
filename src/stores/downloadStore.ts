@@ -36,7 +36,7 @@ interface DownloadState {
   setDownloadError: (error: string | null) => void
   setIsDownloading: (isDownloading: boolean) => void
   loadHistory: () => Promise<void>
-  addToHistory: (item: HistoryItem) => void
+  addToHistory: (item: HistoryItem) => Promise<void>
   removeFromHistory: (id: string) => Promise<void>
   clearHistory: () => Promise<void>
   loadSettings: () => Promise<void>
@@ -177,8 +177,13 @@ export const useDownloadStore = create<DownloadState>((set, get) => ({
     }
   },
 
-  addToHistory: (item) => {
-    set((state) => ({ history: [item, ...state.history] }))
+  addToHistory: async (item) => {
+    try {
+      await window.electronAPI.addToHistory(item)
+      set((state) => ({ history: [item, ...state.history] }))
+    } catch (error) {
+      console.error('Failed to add to history:', error)
+    }
   },
 
   removeFromHistory: async (id) => {

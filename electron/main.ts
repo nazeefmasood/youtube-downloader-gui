@@ -52,6 +52,14 @@ let store: SimpleStore
 let mainWindow: BrowserWindow | null = null
 let downloader: Downloader | null = null
 
+function getIconPath(): string {
+  const isDev = process.env.NODE_ENV === 'development' || !app.isPackaged
+  if (isDev) {
+    return path.join(process.cwd(), 'assets', 'icon.png')
+  }
+  return path.join(process.resourcesPath, 'assets', 'icon.png')
+}
+
 function createWindow() {
   mainWindow = new BrowserWindow({
     width: 1100,
@@ -61,6 +69,7 @@ function createWindow() {
     frame: false,
     transparent: false,
     backgroundColor: '#1a1a2e',
+    icon: getIconPath(),
     webPreferences: {
       preload: path.join(__dirname, 'preload.js'),
       contextIsolation: true,
