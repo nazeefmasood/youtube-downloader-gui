@@ -161,10 +161,8 @@ function App() {
   }, [reset])
 
   const handleOpenFolder = useCallback(() => {
-    const currentState = useDownloadStore.getState()
-    if (currentState.contentInfo) {
-      window.electronAPI.openFolder(settings.downloadPath || '')
-    }
+    // Always open the download folder, not the specific file
+    window.electronAPI.openFolder(settings.downloadPath || '')
   }, [settings.downloadPath])
 
   const formatDuration = (seconds?: number) => {
@@ -226,8 +224,8 @@ function App() {
 
         <button className={`toolbar-btn ${view === 'settings' ? 'active' : ''}`} onClick={() => setView('settings')}>
           <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+            <path d="M12.22 2h-.44a2 2 0 0 0-2 2v.18a2 2 0 0 1-1 1.73l-.43.25a2 2 0 0 1-2 0l-.15-.08a2 2 0 0 0-2.73.73l-.22.38a2 2 0 0 0 .73 2.73l.15.1a2 2 0 0 1 1 1.72v.51a2 2 0 0 1-1 1.74l-.15.09a2 2 0 0 0-.73 2.73l.22.38a2 2 0 0 0 2.73.73l.15-.08a2 2 0 0 1 2 0l.43.25a2 2 0 0 1 1 1.73V20a2 2 0 0 0 2 2h.44a2 2 0 0 0 2-2v-.18a2 2 0 0 1 1-1.73l.43-.25a2 2 0 0 1 2 0l.15.08a2 2 0 0 0 2.73-.73l.22-.39a2 2 0 0 0-.73-2.73l-.15-.08a2 2 0 0 1-1-1.74v-.5a2 2 0 0 1 1-1.74l.15-.09a2 2 0 0 0 .73-2.73l-.22-.38a2 2 0 0 0-2.73-.73l-.15.08a2 2 0 0 1-2 0l-.43-.25a2 2 0 0 1-1-1.73V4a2 2 0 0 0-2-2z"/>
             <circle cx="12" cy="12" r="3"/>
-            <path d="M12 1v4M12 19v4M4.22 4.22l2.83 2.83M16.95 16.95l2.83 2.83M1 12h4M19 12h4M4.22 19.78l2.83-2.83M16.95 7.05l2.83-2.83"/>
           </svg>
           <span>Settings</span>
         </button>
@@ -295,7 +293,7 @@ function App() {
       )}
 
       {/* Main Content */}
-      <div className="main-content">
+      <div className={`main-content ${isDownloading ? 'downloading' : ''}`}>
         {view === 'downloads' && (
           <>
             {/* Content Panel (Left) */}
@@ -359,98 +357,6 @@ function App() {
                     </div>
                   </div>
 
-                  {/* Success State */}
-                  {showSuccess && !isDownloading && (
-                    <div className="success-panel">
-                      <div className="success-icon">
-                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round">
-                          <polyline points="20 6 9 17 4 12"/>
-                        </svg>
-                      </div>
-                      <div className="success-title">DOWNLOAD COMPLETE</div>
-                      <div className="success-message">
-                        // All files have been successfully downloaded to your system
-                      </div>
-                      <div className="success-actions">
-                        <button className="btn-success" onClick={handleOpenFolder}>
-                          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" style={{ marginRight: 8 }}>
-                            <path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/>
-                          </svg>
-                          OPEN FOLDER
-                        </button>
-                        <button className="btn-outline" onClick={handleReset}>
-                          NEW DOWNLOAD
-                        </button>
-                      </div>
-                    </div>
-                  )}
-
-                  {/* Download Progress */}
-                  {isDownloading && downloadProgress && (
-                    <div className="progress-panel">
-                      <div className="progress-header">
-                        <span className="progress-label">
-                          {downloadProgress.status === 'downloading' && 'DOWNLOADING'}
-                          {downloadProgress.status === 'merging' && 'MERGING FILES'}
-                          {downloadProgress.status === 'processing' && 'PROCESSING'}
-                          {downloadProgress.status === 'waiting' && 'WAITING'}
-                          {downloadProgress.status === 'complete' && 'FINALIZING'}
-                        </span>
-                        <span className="progress-percent">{downloadProgress.percent?.toFixed(0) || 0}%</span>
-                      </div>
-                      <div className="progress-bar">
-                        <div className="progress-bar-bg" />
-                        <div className="progress-fill" style={{ width: `${downloadProgress.percent || 0}%` }} />
-                      </div>
-                      <div className="progress-stats">
-                        <div className="progress-stat">
-                          <div className="progress-stat-value">{downloadProgress.speed || '--'}</div>
-                          <div className="progress-stat-label">Speed</div>
-                        </div>
-                        <div className="progress-stat">
-                          <div className="progress-stat-value">{downloadProgress.eta || '--'}</div>
-                          <div className="progress-stat-label">ETA</div>
-                        </div>
-                        <div className="progress-stat">
-                          <div className="progress-stat-value">{downloadProgress.total || '--'}</div>
-                          <div className="progress-stat-label">Size</div>
-                        </div>
-                      </div>
-                      {downloadProgress.totalFiles && downloadProgress.totalFiles > 1 && (
-                        <div className="progress-file">
-                          Processing video <span className="progress-file-name">{downloadProgress.currentIndex || 1}</span> of <span className="progress-file-name">{downloadProgress.totalFiles}</span>
-                        </div>
-                      )}
-                    </div>
-                  )}
-
-                  {/* Initializing State */}
-                  {isDownloading && !downloadProgress && (
-                    <div className="progress-panel">
-                      <div className="progress-header">
-                        <span className="progress-label">INITIALIZING</span>
-                        <span className="progress-percent">0%</span>
-                      </div>
-                      <div className="progress-bar">
-                        <div className="progress-bar-bg" />
-                        <div className="progress-fill" style={{ width: '0%' }} />
-                      </div>
-                      <div className="progress-stats">
-                        <div className="progress-stat">
-                          <div className="progress-stat-value">--</div>
-                          <div className="progress-stat-label">Speed</div>
-                        </div>
-                        <div className="progress-stat">
-                          <div className="progress-stat-value">--</div>
-                          <div className="progress-stat-label">ETA</div>
-                        </div>
-                        <div className="progress-stat">
-                          <div className="progress-stat-value">--</div>
-                          <div className="progress-stat-label">Size</div>
-                        </div>
-                      </div>
-                    </div>
-                  )}
 
                   {/* Error Display */}
                   {downloadError && (
@@ -518,19 +424,47 @@ function App() {
             {/* Side Panel (Right) - Quality Selection */}
             {contentInfo && !showSuccess && (
               <div className="side-panel">
-                <div className="panel-section">
-                  <div className="panel-header">
-                    <span className="panel-title">VIDEO QUALITY</span>
+                <div className="side-panel-content">
+                  <div className="panel-section">
+                    <div className="panel-header">
+                      <span className="panel-title">VIDEO QUALITY</span>
+                    </div>
+                    <div className="panel-content">
+                      {isLoadingFormats ? (
+                        <div className="loading-formats">
+                          <div className="spinner-small" />
+                          <span>LOADING FORMATS...</span>
+                        </div>
+                      ) : (
+                        <div className="quality-list">
+                          {formats.filter(f => !f.isAudioOnly).map((format) => (
+                            <button
+                              key={format.formatId}
+                              className={`quality-option ${selectedFormat === format.formatId ? 'selected' : ''}`}
+                              onClick={() => setSelectedFormat(format.formatId)}
+                              disabled={isDownloading}
+                            >
+                              <div className="quality-info">
+                                <span className="quality-name">{format.quality}</span>
+                                <span className="quality-badge">{format.ext.toUpperCase()}</span>
+                              </div>
+                              {format.filesize && (
+                                <span className="quality-size">~{(format.filesize / 1024 / 1024).toFixed(0)} MB</span>
+                              )}
+                            </button>
+                          ))}
+                        </div>
+                      )}
+                    </div>
                   </div>
-                  <div className="panel-content">
-                    {isLoadingFormats ? (
-                      <div className="loading-formats">
-                        <div className="spinner-small" />
-                        <span>LOADING FORMATS...</span>
-                      </div>
-                    ) : (
+
+                  <div className="panel-section">
+                    <div className="panel-header">
+                      <span className="panel-title">AUDIO ONLY</span>
+                    </div>
+                    <div className="panel-content">
                       <div className="quality-list">
-                        {formats.filter(f => !f.isAudioOnly).map((format) => (
+                        {formats.filter(f => f.isAudioOnly).map((format) => (
                           <button
                             key={format.formatId}
                             className={`quality-option ${selectedFormat === format.formatId ? 'selected' : ''}`}
@@ -541,35 +475,9 @@ function App() {
                               <span className="quality-name">{format.quality}</span>
                               <span className="quality-badge">{format.ext.toUpperCase()}</span>
                             </div>
-                            {format.filesize && (
-                              <span className="quality-size">~{(format.filesize / 1024 / 1024).toFixed(0)} MB</span>
-                            )}
                           </button>
                         ))}
                       </div>
-                    )}
-                  </div>
-                </div>
-
-                <div className="panel-section">
-                  <div className="panel-header">
-                    <span className="panel-title">AUDIO ONLY</span>
-                  </div>
-                  <div className="panel-content">
-                    <div className="quality-list">
-                      {formats.filter(f => f.isAudioOnly).map((format) => (
-                        <button
-                          key={format.formatId}
-                          className={`quality-option ${selectedFormat === format.formatId ? 'selected' : ''}`}
-                          onClick={() => setSelectedFormat(format.formatId)}
-                          disabled={isDownloading}
-                        >
-                          <div className="quality-info">
-                            <span className="quality-name">{format.quality}</span>
-                            <span className="quality-badge">{format.ext.toUpperCase()}</span>
-                          </div>
-                        </button>
-                      ))}
                     </div>
                   </div>
                 </div>
@@ -745,17 +653,91 @@ function App() {
             </div>
 
             <div className="settings-group">
-              <div className="settings-group-title">SYSTEM</div>
+              <div className="settings-group-title">ABOUT</div>
               <div className="setting-item">
                 <div className="setting-info">
                   <div className="setting-label">VidGrab</div>
                   <div className="setting-description">Version 1.0.0 // Powered by yt-dlp</div>
                 </div>
               </div>
+              <div className="setting-item">
+                <div className="setting-info">
+                  <div className="setting-label">Developer</div>
+                  <div className="setting-description">Developed by Nazeef Masood</div>
+                </div>
+              </div>
             </div>
           </div>
         )}
       </div>
+
+      {/* Success Overlay - Full Screen */}
+      {showSuccess && !isDownloading && (
+        <div className="success-overlay">
+          <div className="success-content">
+            <div className="success-confetti" />
+            <div className="success-confetti" />
+            <div className="success-confetti" />
+            <div className="success-confetti" />
+            <div className="success-confetti" />
+            <div className="success-icon">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round">
+                <polyline points="20 6 9 17 4 12"/>
+              </svg>
+            </div>
+            <div className="success-title">DOWNLOAD COMPLETE</div>
+            <div className="success-subtitle">{contentInfo?.title}</div>
+            <div className="success-message">
+              // All files have been successfully downloaded to your system
+            </div>
+            <div className="success-actions">
+              <button className="btn-success" onClick={handleOpenFolder}>
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" style={{ marginRight: 8 }}>
+                  <path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/>
+                </svg>
+                OPEN FOLDER
+              </button>
+              <button className="btn-outline" onClick={handleReset}>
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" style={{ marginRight: 8 }}>
+                  <path d="M12 5v14M5 12h14"/>
+                </svg>
+                NEW DOWNLOAD
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Compact Progress Bar - Fixed above status bar - Only on downloads tab */}
+      {isDownloading && view === 'downloads' && (
+        <div className={`progress-bar-fixed ${contentInfo && !showSuccess ? 'with-sidebar' : ''}`}>
+          <div className="progress-bar-inner">
+            <div className="progress-info">
+              <span className="progress-label">
+                {downloadProgress?.status === 'downloading' && 'DOWNLOADING'}
+                {downloadProgress?.status === 'merging' && 'MERGING'}
+                {downloadProgress?.status === 'processing' && 'PROCESSING'}
+                {downloadProgress?.status === 'waiting' && 'WAITING'}
+                {downloadProgress?.status === 'complete' && 'FINALIZING'}
+                {!downloadProgress && 'INITIALIZING'}
+              </span>
+              <span className="progress-percent">{downloadProgress?.percent?.toFixed(0) || 0}%</span>
+            </div>
+            <div className="progress-bar">
+              <div className="progress-bar-bg" />
+              <div className={`progress-fill ${!downloadProgress ? 'progress-fill-init' : ''}`} style={{ width: `${downloadProgress?.percent || 0}%` }} />
+            </div>
+            <div className="progress-stats-compact">
+              <span><strong>{downloadProgress?.speed || '--'}</strong> Speed</span>
+              <span><strong>{downloadProgress?.eta || '--'}</strong> ETA</span>
+              <span><strong>{downloadProgress?.total || '--'}</strong> Size</span>
+              {downloadProgress?.totalFiles && downloadProgress.totalFiles > 1 && (
+                <span>Video <strong>{downloadProgress.currentIndex || 1}/{downloadProgress.totalFiles}</strong></span>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Status Bar */}
       <div className="status-bar">

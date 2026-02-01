@@ -245,7 +245,16 @@ ipcMain.handle('file:open', async (_event, filePath: string) => {
 })
 
 ipcMain.handle('file:showInFolder', async (_event, filePath: string) => {
-  shell.showItemInFolder(filePath)
+  const fs = await import('fs')
+  const stats = await fs.promises.stat(filePath).catch(() => null)
+
+  if (stats?.isDirectory()) {
+    // If it's a directory, open it directly
+    await shell.openPath(filePath)
+  } else {
+    // If it's a file, show it in folder
+    shell.showItemInFolder(filePath)
+  }
 })
 
 ipcMain.handle('folder:select', async () => {
