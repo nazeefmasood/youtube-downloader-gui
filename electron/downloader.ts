@@ -1,0 +1,496 @@
+import { spawn, ChildProcess } from 'child_process'
+import * as path from 'path'
+import * as fs from 'fs'
+import { EventEmitter } from 'events'
+import { app } from 'electron'
+
+interface ContentInfo {
+  type: 'video' | 'playlist' | 'channel'
+  id: string
+  title: string
+  thumbnail?: string
+  duration?: number
+  uploaderName?: string
+  uploaderUrl?: string
+  description?: string
+  videoCount?: number
+  entries?: Array<{
+    id: string
+    title: string
+    duration?: number
+    thumbnail?: string
+    index: number
+  }>
+}
+
+interface VideoFormat {
+  formatId: string
+  ext: string
+  resolution: string
+  quality: string
+  filesize?: number
+  fps?: number
+  vcodec?: string
+  acodec?: string
+  isAudioOnly: boolean
+}
+
+interface DownloadProgress {
+  percent: number
+  speed?: string
+  eta?: string
+  downloaded?: string
+  total?: string
+  currentFile?: string
+  currentIndex?: number
+  totalFiles?: number
+  status: 'downloading' | 'merging' | 'processing' | 'complete' | 'error' | 'waiting'
+}
+
+interface DownloadOptions {
+  url: string
+  format: string
+  audioOnly?: boolean
+  outputPath: string
+  organizeByType?: boolean
+  delayBetweenDownloads?: number
+}
+
+export class Downloader extends EventEmitter {
+  private currentProcess: ChildProcess | null = null
+  private detectionProcess: ChildProcess | null = null
+  private ytdlpPath: string
+  private ffmpegPath: string
+  private cancelled = false
+
+  constructor() {
+    super()
+    this.ytdlpPath = this.getYtdlpPath()
+    this.ffmpegPath = this.getFfmpegPath()
+  }
+
+  private getYtdlpPath(): string {
+    const platform = process.platform
+    const isDev = process.env.NODE_ENV === 'development' || !app.isPackaged
+
+    let binaryName: string
+    if (platform === 'win32') {
+      binaryName = 'yt-dlp.exe'
+    } else if (platform === 'darwin') {
+      binaryName = 'yt-dlp-macos'
+    } else {
+      binaryName = 'yt-dlp-linux'
+    }
+
+    if (isDev) {
+      return path.join(process.cwd(), 'binaries', binaryName)
+    } else {
+      return path.join(process.resourcesPath, 'binaries', binaryName)
+    }
+  }
+
+  private getFfmpegPath(): string {
+    // Use ffmpeg-static which provides the path to bundled ffmpeg
+    try {
+      // eslint-disable-next-line @typescript-eslint/no-require-imports
+      const ffmpegStatic = require('ffmpeg-static')
+      return ffmpegStatic
+    } catch {
+      // Fallback to system ffmpeg
+      return 'ffmpeg'
+    }
+  }
+
+  private runYtdlp(args: string[], isDetection = false): Promise<string> {
+    return new Promise((resolve, reject) => {
+      const ytdlp = spawn(this.ytdlpPath, args)
+
+      // Track detection process for cancellation
+      if (isDetection) {
+        this.detectionProcess = ytdlp
+      }
+
+      let stdout = ''
+      let stderr = ''
+
+      ytdlp.stdout.on('data', (data) => {
+        stdout += data.toString()
+      })
+
+      ytdlp.stderr.on('data', (data) => {
+        stderr += data.toString()
+      })
+
+      ytdlp.on('close', (code) => {
+        if (isDetection) {
+          this.detectionProcess = null
+        }
+        if (code === 0) {
+          resolve(stdout)
+        } else {
+          reject(new Error(stderr || `yt-dlp exited with code ${code}`))
+        }
+      })
+
+      ytdlp.on('error', (err) => {
+        if (isDetection) {
+          this.detectionProcess = null
+        }
+        reject(err)
+      })
+    })
+  }
+
+  cancelDetection(): void {
+    if (this.detectionProcess) {
+      this.detectionProcess.kill('SIGTERM')
+      this.detectionProcess = null
+    }
+  }
+
+  private delay(ms: number): Promise<void> {
+    return new Promise(resolve => setTimeout(resolve, ms))
+  }
+
+  async detectUrl(url: string): Promise<ContentInfo> {
+    const args = [
+      '--dump-json',
+      '--flat-playlist',
+      '--no-warnings',
+      url,
+    ]
+
+    const output = await this.runYtdlp(args, true)
+    const lines = output.trim().split('\n').filter(Boolean)
+
+    if (lines.length === 0) {
+      throw new Error('No content found')
+    }
+
+    const firstEntry = JSON.parse(lines[0])
+
+    if (firstEntry._type === 'playlist' || lines.length > 1 || firstEntry.playlist_count) {
+      const isChannel = url.includes('/channel/') || url.includes('/@') || url.includes('/c/')
+
+      const entries = lines.slice(0, 20).map((line, index) => {
+        try {
+          const entry = JSON.parse(line)
+          return {
+            id: entry.id || entry.url,
+            title: entry.title || `Video ${index + 1}`,
+            duration: entry.duration,
+            thumbnail: entry.thumbnail || entry.thumbnails?.[0]?.url,
+            index: index + 1,
+          }
+        } catch {
+          return null
+        }
+      }).filter(Boolean) as ContentInfo['entries']
+
+      return {
+        type: isChannel ? 'channel' : 'playlist',
+        id: firstEntry.playlist_id || firstEntry.id || url,
+        title: firstEntry.playlist_title || firstEntry.title || 'Unknown',
+        thumbnail: firstEntry.playlist_thumbnail || firstEntry.thumbnail || firstEntry.thumbnails?.[0]?.url,
+        uploaderName: firstEntry.uploader || firstEntry.channel,
+        uploaderUrl: firstEntry.uploader_url || firstEntry.channel_url,
+        description: firstEntry.description,
+        videoCount: firstEntry.playlist_count || lines.length,
+        entries,
+      }
+    }
+
+    return {
+      type: 'video',
+      id: firstEntry.id,
+      title: firstEntry.title,
+      thumbnail: firstEntry.thumbnail || firstEntry.thumbnails?.[0]?.url,
+      duration: firstEntry.duration,
+      uploaderName: firstEntry.uploader || firstEntry.channel,
+      uploaderUrl: firstEntry.uploader_url || firstEntry.channel_url,
+      description: firstEntry.description,
+    }
+  }
+
+  async getFormats(url: string): Promise<VideoFormat[]> {
+    const args = [
+      '--dump-json',
+      '--no-playlist',
+      '--no-warnings',
+      url,
+    ]
+
+    const output = await this.runYtdlp(args)
+    // yt-dlp may output multiple JSON objects, take only the first one
+    const firstLine = output.trim().split('\n')[0]
+    const info = JSON.parse(firstLine)
+
+    const formats: VideoFormat[] = []
+    const seenQualities = new Set<string>()
+
+    const allFormats = info.formats || []
+
+    // Add "Best Quality" option first - downloads highest available quality
+    formats.push({
+      formatId: 'bestvideo+bestaudio/best',
+      ext: 'mp4',
+      resolution: 'best',
+      quality: 'Best Quality',
+      isAudioOnly: false,
+    })
+
+    // Add combined format options (these are what most users want)
+    // Include 8K (4320p) and other high resolutions
+    const qualities = ['4320', '2160', '1440', '1080', '720', '480', '360']
+    for (const q of qualities) {
+      const hasQuality = allFormats.some((f: Record<string, unknown>) =>
+        f.height === parseInt(q) && f.vcodec && f.vcodec !== 'none'
+      )
+      if (hasQuality) {
+        const label = q === '4320' ? '8K' : q === '2160' ? '4K' : `${q}p`
+        formats.push({
+          formatId: `bestvideo[height<=${q}]+bestaudio/best[height<=${q}]`,
+          ext: 'mp4',
+          resolution: `${q}p`,
+          quality: label,
+          isAudioOnly: false,
+        })
+        seenQualities.add(q)
+      }
+    }
+
+    // Add audio-only options
+    formats.push({
+      formatId: 'bestaudio/best',
+      ext: 'mp3',
+      resolution: 'audio',
+      quality: 'MP3 (Best)',
+      isAudioOnly: true,
+    })
+
+    formats.push({
+      formatId: 'bestaudio[ext=m4a]/bestaudio/best',
+      ext: 'm4a',
+      resolution: 'audio',
+      quality: 'M4A (Best)',
+      isAudioOnly: true,
+    })
+
+    return formats
+  }
+
+  private getQualityLabel(height: number): string {
+    if (height >= 2160) return '2160p'
+    if (height >= 1440) return '1440p'
+    if (height >= 1080) return '1080p'
+    if (height >= 720) return '720p'
+    if (height >= 480) return '480p'
+    if (height >= 360) return '360p'
+    return `${height}p`
+  }
+
+  async download(options: DownloadOptions): Promise<void> {
+    const { url, format, audioOnly, outputPath, organizeByType, delayBetweenDownloads = 2000 } = options
+    this.cancelled = false
+
+    const contentInfo = await this.detectUrl(url)
+
+    let outputDir = outputPath
+    if (organizeByType) {
+      if (contentInfo.type === 'playlist') {
+        outputDir = path.join(outputPath, 'Playlists', this.sanitizeFilename(contentInfo.title))
+      } else if (contentInfo.type === 'channel') {
+        outputDir = path.join(outputPath, 'Channels', this.sanitizeFilename(contentInfo.title))
+      }
+    }
+
+    fs.mkdirSync(outputDir, { recursive: true })
+
+    const args: string[] = [
+      '--no-warnings',
+      '--newline',
+      '--progress',
+      '--ffmpeg-location', this.ffmpegPath,
+    ]
+
+    // Output template
+    if (contentInfo.type === 'playlist') {
+      args.push('-o', path.join(outputDir, '%(playlist_index)02d - %(title)s.%(ext)s'))
+      // Add delay between downloads for playlists
+      args.push('--sleep-interval', String(Math.floor(delayBetweenDownloads / 1000)))
+      args.push('--max-sleep-interval', String(Math.floor(delayBetweenDownloads / 1000) + 2))
+    } else {
+      args.push('-o', path.join(outputDir, '%(title)s.%(ext)s'))
+    }
+
+    // Format selection - IMPORTANT: merge into single file
+    if (audioOnly) {
+      // Audio-only download
+      args.push('-f', 'bestaudio/best')
+      args.push('-x') // Extract audio
+      const ext = format.includes('m4a') ? 'm4a' : 'mp3'
+      args.push('--audio-format', ext)
+      args.push('--audio-quality', '0') // Best quality
+    } else {
+      // Video format with audio merged
+      args.push('-f', format)
+      args.push('--merge-output-format', 'mp4')
+    }
+
+    args.push(url)
+
+    return new Promise((resolve, reject) => {
+      this.currentProcess = spawn(this.ytdlpPath, args)
+
+      let currentFile = ''
+      let currentIndex = 0
+      const totalFiles = contentInfo.videoCount || 1
+
+      this.currentProcess.stdout?.on('data', (data) => {
+        if (this.cancelled) return
+
+        const output = data.toString()
+        const lines = output.split('\n')
+
+        for (const line of lines) {
+          // Parse progress: [download]  45.2% of 50.00MiB at 2.50MiB/s ETA 00:11
+          const progressMatch = line.match(/\[download\]\s+(\d+\.?\d*)%\s+of\s+~?(\S+)\s+at\s+(\S+)\s+ETA\s+(\S+)/)
+          if (progressMatch) {
+            const progress: DownloadProgress = {
+              percent: parseFloat(progressMatch[1]),
+              total: progressMatch[2],
+              speed: progressMatch[3],
+              eta: progressMatch[4],
+              currentFile,
+              currentIndex,
+              totalFiles,
+              status: 'downloading',
+            }
+            this.emit('progress', progress)
+          }
+
+          // Merging status
+          if (line.includes('[Merger]') || line.includes('[ffmpeg]')) {
+            this.emit('progress', {
+              percent: 99,
+              currentFile,
+              currentIndex,
+              totalFiles,
+              status: 'merging',
+            })
+          }
+
+          // Destination file
+          const destMatch = line.match(/\[download\]\s+Destination:\s+(.+)/)
+          if (destMatch) {
+            currentFile = path.basename(destMatch[1])
+          }
+
+          // Downloading item X of Y
+          const itemMatch = line.match(/\[download\]\s+Downloading\s+(?:video|item)\s+(\d+)\s+of\s+(\d+)/)
+          if (itemMatch) {
+            const newIndex = parseInt(itemMatch[1])
+            // Emit videoComplete for previous video when starting a new one
+            if (newIndex > currentIndex && currentFile) {
+              this.emit('videoComplete', {
+                index: currentIndex,
+                totalFiles,
+                title: currentFile.replace(/\.[^/.]+$/, ''), // Remove extension
+                filePath: path.join(outputDir, currentFile),
+              })
+            }
+            currentIndex = newIndex
+            // Emit waiting status before starting next download
+            if (currentIndex > 1) {
+              this.emit('progress', {
+                percent: 0,
+                currentFile: '',
+                currentIndex,
+                totalFiles,
+                status: 'waiting',
+              })
+            }
+          }
+
+          // Already downloaded - also emit videoComplete
+          if (line.includes('has already been downloaded')) {
+            const alreadyMatch = line.match(/\[download\]\s+(.+)\s+has already been downloaded/)
+            if (alreadyMatch) {
+              this.emit('videoComplete', {
+                index: currentIndex,
+                totalFiles,
+                title: path.basename(alreadyMatch[1]).replace(/\.[^/.]+$/, ''),
+                filePath: alreadyMatch[1],
+                alreadyDownloaded: true,
+              })
+            }
+            currentIndex++
+          }
+        }
+      })
+
+      this.currentProcess.stderr?.on('data', (data) => {
+        const output = data.toString()
+        console.error('yt-dlp stderr:', output)
+
+        // Check for cookie errors and continue without cookies
+        if (output.includes('cookies') && output.includes('error')) {
+          console.log('Cookie extraction failed, continuing without cookies')
+        }
+      })
+
+      this.currentProcess.on('close', (code) => {
+        this.currentProcess = null
+        if (this.cancelled) {
+          this.emit('complete', { success: false, error: 'Download cancelled' })
+          resolve()
+        } else if (code === 0) {
+          // Emit videoComplete for the last video (for playlists/channels)
+          if (currentFile && totalFiles > 1) {
+            this.emit('videoComplete', {
+              index: currentIndex || totalFiles,
+              totalFiles,
+              title: currentFile.replace(/\.[^/.]+$/, ''),
+              filePath: path.join(outputDir, currentFile),
+            })
+          }
+          this.emit('progress', {
+            percent: 100,
+            currentFile,
+            currentIndex: totalFiles,
+            totalFiles,
+            status: 'complete',
+          })
+          this.emit('complete', { success: true, filePath: outputDir })
+          resolve()
+        } else {
+          const error = `Download failed with code ${code}`
+          this.emit('complete', { success: false, error })
+          reject(new Error(error))
+        }
+      })
+
+      this.currentProcess.on('error', (err) => {
+        this.currentProcess = null
+        this.emit('complete', { success: false, error: err.message })
+        reject(err)
+      })
+    })
+  }
+
+  cancel(): void {
+    this.cancelled = true
+    if (this.currentProcess) {
+      this.currentProcess.kill('SIGTERM')
+      this.currentProcess = null
+    }
+  }
+
+  private sanitizeFilename(filename: string): string {
+    return filename
+      .replace(/[<>:"/\\|?*]/g, '')
+      .replace(/\s+/g, ' ')
+      .trim()
+      .slice(0, 200)
+  }
+}

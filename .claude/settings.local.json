@@ -1,0 +1,22 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(npm init:*)",
+      "Bash(npm install:*)",
+      "Bash(npx tsc:*)",
+      "Bash(npm ls:*)",
+      "Bash(npm run build:*)",
+      "Bash(npm uninstall:*)",
+      "Bash(chmod:*)",
+      "mcp__ide__getDiagnostics",
+      "Bash(tree:*)",
+      "Bash(lsof:*)",
+      "Bash(xargs:*)",
+      "Bash(curl:*)",
+      "Bash(/home/personal/Developer/youtube-downloader-gui/binaries/yt-dlp-linux:*)",
+      "Bash(npm run:*)",
+      "Bash(./binaries/yt-dlp-linux:*)",
+      "Bash(node -e:*)"
+    ]
+  }
+}
