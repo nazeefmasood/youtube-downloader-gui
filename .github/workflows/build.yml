@@ -40,7 +40,9 @@ jobs:
         run: npm ci
 
       - name: Build application
-        run: npm run ${{ matrix.build_cmd }}
+        run: npm run ${{ matrix.build_cmd }} -- --publish never
+        env:
+          CSC_IDENTITY_AUTO_DISCOVERY: false
 
       - name: Upload Linux artifacts
         if: matrix.platform == 'linux'
