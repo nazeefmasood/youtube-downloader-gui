@@ -80,14 +80,14 @@
     ],
     "win": {
       "target": ["nsis"],
-      "icon": "resources/icon.png"
+      "icon": "resources/icon.ico"
     },
     "mac": {
-      "target": ["dmg"],
+      "target": ["zip"],
       "icon": "resources/icon.png"
     },
     "linux": {
-      "target": ["AppImage"],
+      "target": ["deb"],
       "icon": "resources/icon.png",
       "category": "AudioVideo"
     }
