@@ -2,7 +2,7 @@
 
 A fast and beautiful YouTube video downloader with a modern UI. Download videos, playlists, and entire channels with ease.
 
-## App Features
+## Features
 
 - **One-Click Downloads**: Paste URL and download instantly
 - **Quality Selection**: Choose from 360p to 4K resolution
