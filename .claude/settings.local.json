@@ -25,7 +25,8 @@
       "Bash(ffmpeg:*)",
       "Bash(npx --yes sharp-cli:*)",
       "Bash(npx:*)",
-      "Bash(file:*)"
+      "Bash(file:*)",
+      "Bash(python3:*)"
     ]
   }
 }

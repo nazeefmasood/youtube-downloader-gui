@@ -65,6 +65,34 @@ export interface HistoryItem {
   videoCount?: number
 }
 
+export interface QueueItem {
+  id: string
+  url: string
+  title: string
+  thumbnail?: string
+  format: string
+  audioOnly: boolean
+  status: 'pending' | 'downloading' | 'completed' | 'failed' | 'cancelled' | 'paused'
+  progress?: DownloadProgress
+  addedAt: number
+  source: 'app' | 'extension'
+  error?: string
+}
+
+export interface LogEntry {
+  timestamp: string
+  level: 'info' | 'warn' | 'error'
+  message: string
+  details?: string
+}
+
+export interface QueueStatus {
+  items: QueueItem[]
+  isProcessing: boolean
+  isPaused: boolean
+  currentItemId: string | null
+}
+
 export interface AppSettings {
   downloadPath: string
   defaultQuality: string
@@ -108,6 +136,28 @@ export interface ElectronAPI {
   openFile: (filePath: string) => Promise<void>
   openFolder: (filePath: string) => Promise<void>
   selectFolder: () => Promise<string | null>
+
+  // Queue operations
+  getQueue: () => Promise<QueueStatus>
+  addToQueue: (item: { url: string; title: string; thumbnail?: string; format: string; audioOnly: boolean; source: 'app' | 'extension' }) => Promise<{ id: string; position: number }>
+  removeFromQueue: (id: string) => Promise<void>
+  cancelQueueItem: (id: string) => Promise<void>
+  pauseQueue: () => Promise<void>
+  resumeQueue: () => Promise<void>
+  clearQueue: () => Promise<void>
+  onQueueUpdate: (callback: (status: QueueStatus) => void) => () => void
+
+  // Logger operations
+  getErrorLogs: () => Promise<LogEntry[]>
+  openLogFile: () => Promise<void>
+
+  // Binary management
+  checkBinary: () => Promise<boolean>
+  downloadBinary: () => Promise<boolean>
+  onBinaryDownloadStart: (callback: (data: { name: string }) => void) => () => void
+  onBinaryDownloadProgress: (callback: (data: { percent: number; downloaded: number; total: number }) => void) => () => void
+  onBinaryDownloadComplete: (callback: (data: { path: string }) => void) => () => void
+  onBinaryDownloadError: (callback: (data: { error: string }) => void) => () => void
 }
 
 declare global {

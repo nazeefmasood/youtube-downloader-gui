@@ -1,5 +1,5 @@
 import { create } from 'zustand'
-import type { ContentInfo, VideoFormat, DownloadProgress, HistoryItem, AppSettings } from '../types'
+import type { ContentInfo, VideoFormat, DownloadProgress, HistoryItem, AppSettings, QueueStatus } from '../types'
 
 interface DownloadState {
   // URL and detection
@@ -24,6 +24,9 @@ interface DownloadState {
   // Settings
   settings: AppSettings
 
+  // Queue
+  queueStatus: QueueStatus
+
   // Actions
   setUrl: (url: string) => void
   detectUrl: (url: string) => Promise<void>
@@ -42,6 +45,16 @@ interface DownloadState {
   loadSettings: () => Promise<void>
   updateSettings: (settings: Partial<AppSettings>) => Promise<void>
   reset: () => void
+
+  // Queue actions
+  loadQueue: () => Promise<void>
+  addToQueue: (item: { url: string; title: string; thumbnail?: string; format: string; audioOnly: boolean }) => Promise<{ id: string; position: number }>
+  removeFromQueue: (id: string) => Promise<void>
+  cancelQueueItem: (id: string) => Promise<void>
+  pauseQueue: () => Promise<void>
+  resumeQueue: () => Promise<void>
+  clearQueue: () => Promise<void>
+  setQueueStatus: (status: QueueStatus) => void
 }
 
 const defaultSettings: AppSettings = {
@@ -70,6 +83,12 @@ export const useDownloadStore = create<DownloadState>((set, get) => ({
   downloadError: null,
   history: [],
   settings: defaultSettings,
+  queueStatus: {
+    items: [],
+    isProcessing: false,
+    isPaused: false,
+    currentItemId: null,
+  },
 
   // Actions
   setUrl: (url) => set({ url }),
@@ -129,26 +148,28 @@ export const useDownloadStore = create<DownloadState>((set, get) => ({
   setSelectedFormat: (format) => set({ selectedFormat: format }),
 
   startDownload: async () => {
-    const { url, selectedFormat, settings } = get()
+    const { url, selectedFormat, contentInfo, formats } = get()
     if (!url || !selectedFormat) return
 
-    set({ isDownloading: true, downloadError: null, downloadProgress: null })
+    const formatObj = formats.find(f => f.formatId === selectedFormat)
 
     try {
-      const selectedFormatObj = get().formats.find(f => f.formatId === selectedFormat)
-
-      await window.electronAPI.startDownload({
+      // Add to queue instead of direct download
+      // This ensures all downloads go through the unified queue system
+      await window.electronAPI.addToQueue({
         url,
+        title: contentInfo?.title || 'Unknown',
+        thumbnail: contentInfo?.thumbnail,
         format: selectedFormat,
-        audioOnly: selectedFormatObj?.isAudioOnly,
-        outputPath: settings.downloadPath,
+        audioOnly: formatObj?.isAudioOnly || false,
+        source: 'app',
       })
 
-      // Add to history on success (handled via IPC callback)
+      // Clear error state - queue status will show the download progress
+      set({ downloadError: null, downloadProgress: null })
     } catch (error) {
       set({
-        isDownloading: false,
-        downloadError: error instanceof Error ? error.message : 'Download failed',
+        downloadError: error instanceof Error ? error.message : 'Failed to add to queue',
       })
     }
   },
@@ -233,4 +254,65 @@ export const useDownloadStore = create<DownloadState>((set, get) => ({
     downloadProgress: null,
     downloadError: null,
   }),
+
+  // Queue actions
+  loadQueue: async () => {
+    try {
+      const queueStatus = await window.electronAPI.getQueue()
+      set({ queueStatus })
+    } catch (error) {
+      console.error('Failed to load queue:', error)
+    }
+  },
+
+  addToQueue: async (item) => {
+    try {
+      return await window.electronAPI.addToQueue({ ...item, source: 'app' })
+    } catch (error) {
+      console.error('Failed to add to queue:', error)
+      throw error
+    }
+  },
+
+  removeFromQueue: async (id) => {
+    try {
+      await window.electronAPI.removeFromQueue(id)
+    } catch (error) {
+      console.error('Failed to remove from queue:', error)
+    }
+  },
+
+  cancelQueueItem: async (id) => {
+    try {
+      await window.electronAPI.cancelQueueItem(id)
+    } catch (error) {
+      console.error('Failed to cancel queue item:', error)
+    }
+  },
+
+  pauseQueue: async () => {
+    try {
+      await window.electronAPI.pauseQueue()
+    } catch (error) {
+      console.error('Failed to pause queue:', error)
+    }
+  },
+
+  resumeQueue: async () => {
+    try {
+      await window.electronAPI.resumeQueue()
+    } catch (error) {
+      console.error('Failed to resume queue:', error)
+    }
+  },
+
+  clearQueue: async () => {
+    try {
+      await window.electronAPI.clearQueue()
+    } catch (error) {
+      console.error('Failed to clear queue:', error)
+    }
+  },
+
+  setQueueStatus: (status) => set({ queueStatus: status }),
 }))

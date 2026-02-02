@@ -2270,3 +2270,747 @@ html, body, #root {
 [data-theme="light"] .btn-outline .shortcut-hint {
   background: var(--border);
 }
+
+/* ============================================
+   QUEUE VIEW STYLES
+   ============================================ */
+
+.queue-panel {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  animation: fadeIn 0.3s ease-out;
+}
+
+.queue-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 12px 16px;
+  background: var(--bg-tertiary);
+  border-bottom: 1px solid var(--border);
+  transition: background-color 0.3s ease, border-color 0.3s ease;
+}
+
+.queue-stats {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.queue-title {
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.2em;
+  text-transform: uppercase;
+  color: var(--text-secondary);
+}
+
+.queue-title::before {
+  content: '// ';
+  color: var(--accent);
+}
+
+.queue-badges {
+  display: flex;
+  gap: 8px;
+}
+
+.queue-badge {
+  font-size: 9px;
+  font-weight: 600;
+  letter-spacing: 0.05em;
+  padding: 3px 8px;
+  border-radius: 2px;
+  text-transform: uppercase;
+}
+
+.queue-badge.downloading {
+  background: var(--accent-glow);
+  color: var(--accent);
+}
+
+.queue-badge.pending {
+  background: rgba(255, 170, 0, 0.15);
+  color: var(--warning);
+}
+
+.queue-badge.completed {
+  background: rgba(0, 255, 136, 0.15);
+  color: var(--success);
+}
+
+.queue-badge.done {
+  background: rgba(0, 255, 136, 0.1);
+  color: var(--success);
+}
+
+.queue-controls {
+  display: flex;
+  gap: 8px;
+}
+
+.btn-queue-control {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 12px;
+  background: transparent;
+  border: 1px solid var(--border);
+  color: var(--text-secondary);
+  font-family: inherit;
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.btn-queue-control:hover {
+  border-color: var(--accent);
+  color: var(--accent);
+}
+
+.btn-queue-control.paused {
+  border-color: var(--success);
+  color: var(--success);
+  background: rgba(0, 255, 136, 0.1);
+}
+
+.queue-list {
+  flex: 1;
+  overflow-y: auto;
+}
+
+.queue-item {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 12px 16px;
+  border-bottom: 1px solid var(--border);
+  transition: all 0.2s ease;
+  animation: fadeInUp 0.3s ease-out;
+}
+
+.queue-item:hover {
+  background: var(--bg-tertiary);
+}
+
+.queue-item.active {
+  background: var(--accent-glow);
+  border-left: 3px solid var(--accent);
+}
+
+.queue-item.completed {
+  opacity: 0.6;
+}
+
+.queue-item.failed {
+  border-left: 3px solid var(--error);
+  background: rgba(255, 51, 102, 0.05);
+}
+
+.queue-item.paused {
+  border-left: 3px solid var(--warning);
+  background: rgba(255, 170, 0, 0.05);
+}
+
+.queue-item-thumb {
+  width: 80px;
+  height: 45px;
+  background: var(--bg-tertiary);
+  border: 1px solid var(--border);
+  overflow: hidden;
+  flex-shrink: 0;
+  border-radius: 2px;
+}
+
+.queue-item-thumb img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.queue-item-info {
+  flex: 1;
+  min-width: 0;
+}
+
+.queue-item-title {
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--text-primary);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  margin-bottom: 4px;
+}
+
+.queue-item-meta {
+  display: flex;
+  gap: 8px;
+  font-size: 10px;
+  color: var(--text-muted);
+}
+
+.queue-item-source {
+  font-weight: 700;
+  padding: 1px 4px;
+  background: var(--bg-tertiary);
+  border-radius: 2px;
+  color: var(--text-secondary);
+}
+
+.queue-item-format {
+  font-weight: 600;
+  color: var(--accent);
+}
+
+.queue-item-progress {
+  margin-top: 8px;
+}
+
+.queue-progress-bar {
+  height: 4px;
+  background: var(--bg-primary);
+  border-radius: 2px;
+  overflow: hidden;
+  margin-bottom: 4px;
+}
+
+.queue-progress-fill {
+  height: 100%;
+  background: var(--accent);
+  transition: width 0.3s ease;
+}
+
+.queue-progress-stats {
+  display: flex;
+  gap: 12px;
+  font-size: 9px;
+  color: var(--text-muted);
+}
+
+.queue-item-error {
+  margin-top: 4px;
+  font-size: 10px;
+  color: var(--error);
+}
+
+.queue-item-status {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-shrink: 0;
+}
+
+.queue-item-status .status-label {
+  font-size: 9px;
+  font-weight: 700;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+}
+
+.queue-item-status .status-label.pending {
+  color: var(--text-muted);
+}
+
+.queue-item-status .status-label.downloading {
+  color: var(--accent);
+}
+
+.queue-item-status .status-label.completed {
+  color: var(--success);
+}
+
+.queue-item-status .status-label.failed {
+  color: var(--error);
+}
+
+.queue-item-status .status-label.cancelled {
+  color: var(--text-muted);
+}
+
+.queue-item-status .status-label.paused {
+  color: var(--warning);
+}
+
+.queue-item-actions {
+  display: flex;
+  gap: 4px;
+}
+
+.queue-btn-cancel,
+.queue-btn-remove {
+  width: 28px;
+  height: 28px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: transparent;
+  border: 1px solid var(--border);
+  color: var(--text-muted);
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.queue-btn-cancel:hover {
+  border-color: var(--error);
+  color: var(--error);
+}
+
+.queue-btn-remove:hover {
+  border-color: var(--text-secondary);
+  color: var(--text-secondary);
+}
+
+/* Spin animation for loading icon */
+.spin {
+  animation: spin 1s linear infinite;
+}
+
+/* Queue count badge in toolbar */
+.queue-count {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 18px;
+  height: 18px;
+  padding: 0 5px;
+  background: var(--accent);
+  color: var(--bg-primary);
+  font-size: 10px;
+  font-weight: 700;
+  border-radius: 9px;
+  margin-left: 6px;
+}
+
+/* Empty state hint items */
+.empty-state-hint {
+  margin-top: 24px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  text-align: left;
+}
+
+.hint-item {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  font-size: 12px;
+  color: var(--text-secondary);
+}
+
+.hint-icon {
+  width: 24px;
+  height: 24px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--accent-glow);
+  color: var(--accent);
+  font-size: 11px;
+  font-weight: 700;
+  border-radius: 50%;
+}
+
+/* ============================================
+   CONTENT ACTIONS - DOWNLOAD ALL BUTTON
+   ============================================ */
+
+.content-actions {
+  margin-top: 16px;
+  padding-top: 16px;
+  border-top: 1px solid var(--border);
+}
+
+.btn-download-all {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  padding: 14px 24px;
+  background: var(--accent);
+  border: none;
+  color: var(--bg-primary);
+  font-family: inherit;
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  position: relative;
+  overflow: hidden;
+}
+
+.btn-download-all::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: -100%;
+  width: 100%;
+  height: 100%;
+  background: linear-gradient(
+    90deg,
+    transparent,
+    rgba(255, 255, 255, 0.3),
+    transparent
+  );
+  transition: left 0.5s ease;
+}
+
+.btn-download-all:hover::before {
+  left: 100%;
+}
+
+.btn-download-all:hover {
+  background: var(--accent-dim);
+  transform: translateY(-2px);
+  box-shadow: 0 4px 20px var(--accent-glow);
+}
+
+.btn-download-all:disabled {
+  opacity: 0.3;
+  cursor: not-allowed;
+  transform: none;
+  box-shadow: none;
+}
+
+/* ============================================
+   PROGRESS BAR TITLE COMPACT
+   ============================================ */
+
+.progress-title-compact {
+  max-width: 200px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  color: var(--text-secondary);
+}
+
+/* ============================================
+   STATUS INDICATOR PAUSED STATE
+   ============================================ */
+
+.status-indicator.paused {
+  background: var(--warning);
+  animation: pulse 2s ease-in-out infinite;
+}
+
+.status-indicator.paused::after {
+  border-color: var(--warning);
+}
+
+.status-indicator.complete {
+  background: var(--success);
+}
+
+.status-indicator.complete::after {
+  border-color: var(--success);
+}
+
+/* ============================================
+   DEBUG LOGS SECTION
+   ============================================ */
+
+.log-actions {
+  display: flex;
+  gap: 8px;
+}
+
+.error-log-list {
+  max-height: 300px;
+  overflow-y: auto;
+  margin-top: 8px;
+  border: 1px solid var(--border);
+  background: var(--bg-primary);
+}
+
+.error-log-item {
+  padding: 10px 12px;
+  border-bottom: 1px solid var(--border);
+  font-size: 11px;
+}
+
+.error-log-item:last-child {
+  border-bottom: none;
+}
+
+.error-log-item.error {
+  border-left: 3px solid var(--error);
+}
+
+.error-log-item.warn {
+  border-left: 3px solid var(--warning);
+}
+
+.error-log-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 4px;
+}
+
+.error-log-level {
+  font-size: 9px;
+  font-weight: 700;
+  letter-spacing: 0.05em;
+  padding: 2px 6px;
+  border-radius: 2px;
+}
+
+.error-log-level.error {
+  background: rgba(255, 51, 102, 0.15);
+  color: var(--error);
+}
+
+.error-log-level.warn {
+  background: rgba(255, 170, 0, 0.15);
+  color: var(--warning);
+}
+
+.error-log-time {
+  color: var(--text-muted);
+  font-size: 10px;
+}
+
+.error-log-message {
+  color: var(--text-primary);
+  margin-bottom: 4px;
+}
+
+.error-log-details {
+  color: var(--text-muted);
+  font-family: monospace;
+  font-size: 10px;
+  white-space: pre-wrap;
+  word-break: break-all;
+  background: var(--bg-tertiary);
+  padding: 8px;
+  margin-top: 4px;
+  max-height: 100px;
+  overflow-y: auto;
+}
+
+/* ============================================
+   CREDITS & CONFETTI
+   ============================================ */
+
+.setting-item.clickable {
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.setting-item.clickable:hover {
+  background: var(--bg-tertiary);
+  padding-left: 8px;
+  margin-left: -8px;
+  padding-right: 8px;
+  margin-right: -8px;
+}
+
+.credits-name {
+  color: var(--accent) !important;
+  font-weight: 600;
+}
+
+.credits-hint {
+  font-size: 10px;
+  color: var(--text-muted);
+  opacity: 0;
+  transition: opacity 0.2s ease;
+}
+
+.setting-item.clickable:hover .credits-hint {
+  opacity: 1;
+}
+
+.confetti-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 9999;
+  pointer-events: none;
+  overflow: hidden;
+}
+
+.confetti-piece {
+  position: absolute;
+  width: 10px;
+  height: 10px;
+  top: -20px;
+  animation: confettiFall 3s ease-out forwards;
+}
+
+@keyframes confettiFall {
+  0% {
+    transform: translateY(0) rotate(0deg) scale(1);
+    opacity: 1;
+  }
+  100% {
+    transform: translateY(100vh) rotate(720deg) scale(0.5);
+    opacity: 0;
+  }
+}
+
+.confetti-text {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  font-size: 48px;
+  font-weight: 700;
+  color: var(--accent);
+  text-shadow: 0 0 30px var(--accent-glow);
+  animation: thanksPop 0.5s ease-out;
+  white-space: nowrap;
+}
+
+@keyframes thanksPop {
+  0% {
+    transform: translate(-50%, -50%) scale(0);
+    opacity: 0;
+  }
+  50% {
+    transform: translate(-50%, -50%) scale(1.2);
+  }
+  100% {
+    transform: translate(-50%, -50%) scale(1);
+    opacity: 1;
+  }
+}
+
+/* ============================================
+   BINARY DOWNLOAD MODAL
+   ============================================ */
+
+.binary-modal-overlay {
+  position: fixed;
+  inset: 0;
+  background: var(--overlay);
+  backdrop-filter: blur(8px);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 10000;
+}
+
+.binary-modal {
+  background: var(--bg-secondary);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 40px;
+  max-width: 420px;
+  width: 90%;
+  text-align: center;
+  animation: modalIn 0.3s ease-out;
+}
+
+@keyframes modalIn {
+  from {
+    opacity: 0;
+    transform: scale(0.9) translateY(20px);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1) translateY(0);
+  }
+}
+
+.binary-modal-icon {
+  color: var(--accent);
+  margin-bottom: 20px;
+  animation: pulse 2s ease-in-out infinite;
+}
+
+@keyframes pulse {
+  0%, 100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.5;
+  }
+}
+
+.binary-modal-title {
+  font-size: 18px;
+  font-weight: 700;
+  letter-spacing: 0.1em;
+  color: var(--text-primary);
+  margin-bottom: 12px;
+}
+
+.binary-modal-text {
+  font-size: 13px;
+  color: var(--text-secondary);
+  line-height: 1.6;
+  margin-bottom: 24px;
+}
+
+.binary-modal-error {
+  background: rgba(255, 51, 102, 0.1);
+  border: 1px solid var(--error);
+  border-radius: 4px;
+  padding: 12px;
+  margin-bottom: 20px;
+  color: var(--error);
+  font-size: 12px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.binary-modal-progress {
+  margin-top: 20px;
+}
+
+.binary-progress-bar {
+  height: 8px;
+  background: var(--bg-tertiary);
+  border-radius: 4px;
+  overflow: hidden;
+  margin-bottom: 12px;
+}
+
+.binary-progress-fill {
+  height: 100%;
+  background: var(--accent);
+  border-radius: 4px;
+  transition: width 0.3s ease;
+}
+
+.binary-progress-text {
+  font-size: 12px;
+  color: var(--text-secondary);
+  letter-spacing: 0.05em;
+}
+
+.binary-modal-btn {
+  background: var(--accent);
+  color: var(--bg-primary);
+  border: none;
+  padding: 14px 32px;
+  font-size: 13px;
+  font-weight: 700;
+  letter-spacing: 0.1em;
+  border-radius: 4px;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  transition: all 0.2s ease;
+}
+
+.binary-modal-btn:hover {
+  background: var(--accent-dim);
+  transform: translateY(-2px);
+  box-shadow: 0 8px 20px var(--accent-glow);
+}
+
+.binary-modal-btn:active {
+  transform: translateY(0);
+}

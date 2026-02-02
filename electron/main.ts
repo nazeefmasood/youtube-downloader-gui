@@ -1,7 +1,12 @@
-import { app, BrowserWindow, ipcMain, dialog, shell } from 'electron'
+import { app, BrowserWindow, ipcMain, dialog, shell, Menu, MenuItem } from 'electron'
 import * as path from 'path'
 import * as fs from 'fs'
 import { Downloader } from './downloader'
+import { QueueManager, QueueStatus } from './queueManager'
+import { startHttpServer } from './httpServer'
+import { logger } from './logger'
+import { binaryManager } from './binaryManager'
+import * as http from 'http'
 
 interface StoreData {
   settings: Record<string, unknown>
@@ -51,6 +56,8 @@ class SimpleStore {
 let store: SimpleStore
 let mainWindow: BrowserWindow | null = null
 let downloader: Downloader | null = null
+let queueManager: QueueManager | null = null
+let httpServer: http.Server | null = null
 
 function getIconPath(): string {
   const isDev = process.env.NODE_ENV === 'development' || !app.isPackaged
@@ -94,12 +101,50 @@ function createWindow() {
     mainWindow = null
   })
 
+  // Add context menu for copy/paste
+  mainWindow.webContents.on('context-menu', (_event, params) => {
+    const menu = new Menu()
+
+    if (params.isEditable) {
+      if (params.selectionText) {
+        menu.append(new MenuItem({ label: 'Cut', role: 'cut' }))
+        menu.append(new MenuItem({ label: 'Copy', role: 'copy' }))
+      }
+      menu.append(new MenuItem({ label: 'Paste', role: 'paste' }))
+      if (params.selectionText) {
+        menu.append(new MenuItem({ type: 'separator' }))
+        menu.append(new MenuItem({ label: 'Select All', role: 'selectAll' }))
+      }
+    } else if (params.selectionText) {
+      menu.append(new MenuItem({ label: 'Copy', role: 'copy' }))
+    }
+
+    if (menu.items.length > 0) menu.popup()
+  })
+
   // Initialize downloader
   downloader = new Downloader()
+
+  // Initialize queue manager
+  queueManager = new QueueManager()
+
+  // Set up queue manager listeners
+  queueManager.on('update', (status: QueueStatus) => {
+    mainWindow?.webContents.send('queue:update', status)
+  })
+
+  // Start HTTP server for extension communication
+  startHttpServer(queueManager).then((server) => {
+    httpServer = server
+    console.log('HTTP server started for extension communication')
+  }).catch((error) => {
+    console.error('Failed to start HTTP server:', error)
+  })
 }
 
 app.whenReady().then(() => {
   store = new SimpleStore()
+  logger.logStartup()
   createWindow()
 
   app.on('activate', () => {
@@ -112,6 +157,14 @@ app.whenReady().then(() => {
 app.on('window-all-closed', () => {
   if (process.platform !== 'darwin') {
     app.quit()
+  }
+})
+
+app.on('before-quit', () => {
+  // Close HTTP server
+  if (httpServer) {
+    httpServer.close()
+    httpServer = null
   }
 })
 
@@ -138,8 +191,19 @@ ipcMain.handle('window:isMaximized', () => {
 
 // URL Detection
 ipcMain.handle('url:detect', async (_event, url: string) => {
-  if (!downloader) throw new Error('Downloader not initialized')
-  return await downloader.detectUrl(url)
+  if (!downloader) {
+    logger.error('URL detection failed', 'Downloader not initialized')
+    throw new Error('Downloader not initialized')
+  }
+  try {
+    logger.info('Detecting URL', url)
+    const result = await downloader.detectUrl(url)
+    logger.info('URL detection successful', `Type: ${result.type}, Title: ${result.title}`)
+    return result
+  } catch (error) {
+    logger.error('URL detection failed', error instanceof Error ? error : String(error))
+    throw error
+  }
 })
 
 // Cancel URL Detection
@@ -150,8 +214,19 @@ ipcMain.handle('url:cancelDetect', () => {
 
 // Get formats
 ipcMain.handle('formats:get', async (_event, url: string) => {
-  if (!downloader) throw new Error('Downloader not initialized')
-  return await downloader.getFormats(url)
+  if (!downloader) {
+    logger.error('Get formats failed', 'Downloader not initialized')
+    throw new Error('Downloader not initialized')
+  }
+  try {
+    logger.info('Fetching formats', url)
+    const formats = await downloader.getFormats(url)
+    logger.info('Formats fetched successfully', `Found ${formats.length} formats`)
+    return formats
+  } catch (error) {
+    logger.error('Get formats failed', error instanceof Error ? error : String(error))
+    throw error
+  }
 })
 
 // Start download
@@ -268,3 +343,76 @@ function getDefaultDownloadPath(): string {
   const home = app.getPath('home')
   return path.join(home, 'Downloads', 'Youtube Downloads')
 }
+
+// Queue IPC handlers
+ipcMain.handle('queue:get', () => {
+  if (!queueManager) throw new Error('Queue manager not initialized')
+  return queueManager.getStatus()
+})
+
+ipcMain.handle('queue:add', (_event, item: {
+  url: string
+  title: string
+  thumbnail?: string
+  format: string
+  audioOnly: boolean
+  source: 'app' | 'extension'
+}) => {
+  if (!queueManager) throw new Error('Queue manager not initialized')
+
+  // Update queue manager with current settings
+  const settings = store.get('settings')
+  queueManager.setDownloadPath(settings.downloadPath as string || getDefaultDownloadPath())
+  queueManager.setSettings({
+    organizeByType: settings.organizeByType as boolean ?? true,
+    delayBetweenDownloads: settings.delayBetweenDownloads as number ?? 2000,
+  })
+
+  return queueManager.addItem(item)
+})
+
+ipcMain.handle('queue:remove', (_event, id: string) => {
+  if (!queueManager) throw new Error('Queue manager not initialized')
+  return queueManager.removeItem(id)
+})
+
+ipcMain.handle('queue:cancel', (_event, id: string) => {
+  if (!queueManager) throw new Error('Queue manager not initialized')
+  return queueManager.cancelItem(id)
+})
+
+ipcMain.handle('queue:pause', () => {
+  if (!queueManager) throw new Error('Queue manager not initialized')
+  queueManager.pause()
+})
+
+ipcMain.handle('queue:resume', () => {
+  if (!queueManager) throw new Error('Queue manager not initialized')
+  queueManager.resume()
+})
+
+ipcMain.handle('queue:clear', () => {
+  if (!queueManager) throw new Error('Queue manager not initialized')
+  queueManager.clear()
+})
+
+// Logger IPC handlers
+ipcMain.handle('logger:getErrors', () => {
+  return logger.getRecentErrors()
+})
+
+ipcMain.handle('logger:openLogFile', () => {
+  const logPath = logger.getLogFilePath()
+  if (logPath) {
+    shell.showItemInFolder(logPath)
+  }
+})
+
+// Binary management IPC handlers
+ipcMain.handle('binary:check', () => {
+  return binaryManager.isBinaryInstalled()
+})
+
+ipcMain.handle('binary:download', async () => {
+  return await binaryManager.downloadBinary(mainWindow)
+})

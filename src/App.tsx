@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback } from 'react'
 import { useDownloadStore } from './stores/downloadStore'
-import type { DownloadProgress } from './types'
+import type { DownloadProgress, QueueItem, LogEntry } from './types'
 
 type View = 'downloads' | 'history' | 'settings'
 type Theme = 'dark' | 'light'
@@ -11,6 +11,12 @@ function App() {
   const [completedVideos, setCompletedVideos] = useState<Set<number>>(new Set())
   const [showSuccess, setShowSuccess] = useState(false)
   const [theme, setTheme] = useState<Theme>('dark')
+  const [errorLogs, setErrorLogs] = useState<LogEntry[]>([])
+  const [showConfetti, setShowConfetti] = useState(false)
+  const [binaryMissing, setBinaryMissing] = useState(false)
+  const [binaryDownloading, setBinaryDownloading] = useState(false)
+  const [binaryDownloadProgress, setBinaryDownloadProgress] = useState(0)
+  const [binaryError, setBinaryError] = useState<string | null>(null)
   const {
     contentInfo,
     isDetecting,
@@ -37,6 +43,9 @@ function App() {
     loadSettings,
     updateSettings,
     reset,
+    loadQueue,
+    queueStatus,
+    setQueueStatus,
   } = useDownloadStore()
 
   // Initialize theme from localStorage
@@ -58,11 +67,60 @@ function App() {
     document.documentElement.setAttribute('data-theme', newTheme)
   }, [theme])
 
-  // Initialize settings and history
+  // Initialize settings, history, and queue
   useEffect(() => {
     loadSettings()
     loadHistory()
-  }, [loadSettings, loadHistory])
+    loadQueue()
+  }, [loadSettings, loadHistory, loadQueue])
+
+  // Check for binary on startup
+  useEffect(() => {
+    const checkBinary = async () => {
+      const installed = await window.electronAPI.checkBinary()
+      if (!installed) {
+        setBinaryMissing(true)
+      }
+    }
+    checkBinary()
+
+    // Set up binary download listeners
+    const unsubStart = window.electronAPI.onBinaryDownloadStart(() => {
+      setBinaryDownloading(true)
+      setBinaryDownloadProgress(0)
+      setBinaryError(null)
+    })
+
+    const unsubProgress = window.electronAPI.onBinaryDownloadProgress((data) => {
+      setBinaryDownloadProgress(data.percent)
+    })
+
+    const unsubComplete = window.electronAPI.onBinaryDownloadComplete(() => {
+      setBinaryDownloading(false)
+      setBinaryMissing(false)
+      setBinaryDownloadProgress(100)
+    })
+
+    const unsubError = window.electronAPI.onBinaryDownloadError((data) => {
+      setBinaryDownloading(false)
+      setBinaryError(data.error)
+    })
+
+    return () => {
+      unsubStart()
+      unsubProgress()
+      unsubComplete()
+      unsubError()
+    }
+  }, [])
+
+  // Subscribe to queue updates
+  useEffect(() => {
+    const unsubscribe = window.electronAPI.onQueueUpdate((status) => {
+      setQueueStatus(status)
+    })
+    return () => unsubscribe()
+  }, [setQueueStatus])
 
   // Set up download event listeners
   useEffect(() => {
@@ -161,31 +219,105 @@ function App() {
   }, [reset])
 
   const handleOpenFolder = useCallback(() => {
-    // Always open the download folder, not the specific file
     window.electronAPI.openFolder(settings.downloadPath || '')
   }, [settings.downloadPath])
+
+  // Queue actions
+  const handleCancelQueueItem = useCallback((id: string) => {
+    window.electronAPI.cancelQueueItem(id)
+  }, [])
+
+  const handleRemoveQueueItem = useCallback((id: string) => {
+    window.electronAPI.removeFromQueue(id)
+  }, [])
+
+  const handlePauseResumeQueue = useCallback(() => {
+    if (queueStatus.isPaused) {
+      window.electronAPI.resumeQueue()
+    } else {
+      window.electronAPI.pauseQueue()
+    }
+  }, [queueStatus.isPaused])
+
+  const handleClearQueue = useCallback(() => {
+    window.electronAPI.clearQueue()
+  }, [])
+
+  // Load error logs when settings view is active
+  const loadErrorLogs = useCallback(async () => {
+    try {
+      const logs = await window.electronAPI.getErrorLogs()
+      setErrorLogs(logs)
+    } catch (err) {
+      console.error('Failed to load error logs:', err)
+    }
+  }, [])
+
+  const handleCopyLogs = useCallback(() => {
+    const logText = errorLogs.map(log =>
+      `[${log.timestamp}] [${log.level.toUpperCase()}] ${log.message}${log.details ? '\n  ' + log.details : ''}`
+    ).join('\n')
+    navigator.clipboard.writeText(logText)
+  }, [errorLogs])
+
+  const handleOpenLogFile = useCallback(() => {
+    window.electronAPI.openLogFile()
+  }, [])
+
+  // Load logs when settings view is opened
+  useEffect(() => {
+    if (view === 'settings') {
+      loadErrorLogs()
+    }
+  }, [view, loadErrorLogs])
+
+  // Handle confetti easter egg
+  const handleCreditsClick = useCallback(() => {
+    setShowConfetti(true)
+    setTimeout(() => setShowConfetti(false), 3000)
+  }, [])
+
+  // Handle binary download
+  const handleDownloadBinary = useCallback(async () => {
+    setBinaryError(null)
+    await window.electronAPI.downloadBinary()
+  }, [])
+
+  // Handle download all for playlists/channels
+  const handleDownloadAll = useCallback(async () => {
+    if (!contentInfo) return
+
+    // Use selected format or default to best quality
+    const formatToUse = selectedFormat || 'bestvideo+bestaudio/best'
+    const formatObj = formats.find(f => f.formatId === formatToUse)
+
+    // Queue the main playlist/channel URL - yt-dlp handles it
+    await window.electronAPI.addToQueue({
+      url: urlInput,
+      title: contentInfo.title,
+      thumbnail: contentInfo.thumbnail,
+      format: formatToUse,
+      audioOnly: formatObj?.isAudioOnly || false,
+      source: 'app',
+    })
+  }, [contentInfo, selectedFormat, formats, urlInput])
 
   // Global keyboard shortcuts
   useEffect(() => {
     const handleGlobalKeyDown = (e: KeyboardEvent) => {
-      // Don't trigger shortcuts when typing in input fields (except specific ones)
       const target = e.target as HTMLElement
       const isInputField = target.tagName === 'INPUT' || target.tagName === 'TEXTAREA' || target.isContentEditable
 
-      // Ctrl+V - Paste & Analyze URL (only when URL input is empty and focused or when not in input)
       if (e.ctrlKey && e.key === 'v' && !urlInput.trim() && !isDetecting && !isDownloading) {
-        // Let the paste happen naturally in the input field
         return
       }
 
-      // Ctrl+Enter - Start Download
       if (e.ctrlKey && e.key === 'Enter' && selectedFormat && !isDownloading && contentInfo) {
         e.preventDefault()
         handleStartDownload()
         return
       }
 
-      // Escape - Cancel/Abort
       if (e.key === 'Escape') {
         if (isDetecting) {
           e.preventDefault()
@@ -200,45 +332,38 @@ function App() {
         return
       }
 
-      // Skip other shortcuts if in input field
       if (isInputField) return
 
-      // Ctrl+O - Open Download Folder
       if (e.ctrlKey && e.key === 'o' && showSuccess) {
         e.preventDefault()
         handleOpenFolder()
         return
       }
 
-      // Ctrl+N - New Download (Reset)
       if (e.ctrlKey && e.key === 'n') {
         e.preventDefault()
         handleReset()
         return
       }
 
-      // Ctrl+1 - Switch to Downloads tab
       if (e.ctrlKey && e.key === '1') {
         e.preventDefault()
         setView('downloads')
         return
       }
 
-      // Ctrl+2 - Switch to History tab
       if (e.ctrlKey && e.key === '2') {
         e.preventDefault()
         setView('history')
         return
       }
 
-      // Ctrl+3 - Switch to Settings tab
       if (e.ctrlKey && e.key === '3') {
         e.preventDefault()
         setView('settings')
         return
       }
 
-      // Ctrl+L - Toggle Light/Dark mode
       if (e.ctrlKey && e.key === 'l') {
         e.preventDefault()
         toggleTheme()
@@ -277,8 +402,130 @@ function App() {
     return 'waiting'
   }
 
+  const formatTime = (timestamp: number) => {
+    return new Date(timestamp).toLocaleTimeString()
+  }
+
+  const getQueueStatusIcon = (status: QueueItem['status']) => {
+    switch (status) {
+      case 'pending':
+        return (
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+            <circle cx="12" cy="12" r="10"/>
+            <polyline points="12 6 12 12 16 14"/>
+          </svg>
+        )
+      case 'downloading':
+        return (
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="spin">
+            <path d="M21 12a9 9 0 1 1-6.219-8.56"/>
+          </svg>
+        )
+      case 'completed':
+        return (
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="var(--success)" strokeWidth="2">
+            <polyline points="20 6 9 17 4 12"/>
+          </svg>
+        )
+      case 'failed':
+        return (
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="var(--error)" strokeWidth="2">
+            <circle cx="12" cy="12" r="10"/>
+            <line x1="15" y1="9" x2="9" y2="15"/>
+            <line x1="9" y1="9" x2="15" y2="15"/>
+          </svg>
+        )
+      case 'cancelled':
+        return (
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="var(--text-muted)" strokeWidth="2">
+            <circle cx="12" cy="12" r="10"/>
+            <line x1="8" y1="12" x2="16" y2="12"/>
+          </svg>
+        )
+      case 'paused':
+        return (
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="var(--warning)" strokeWidth="2">
+            <circle cx="12" cy="12" r="10"/>
+            <line x1="10" y1="8" x2="10" y2="16"/>
+            <line x1="14" y1="8" x2="14" y2="16"/>
+          </svg>
+        )
+    }
+  }
+
+  const getQueueStatusLabel = (status: QueueItem['status']) => {
+    switch (status) {
+      case 'pending': return 'QUEUED'
+      case 'downloading': return 'DOWNLOADING'
+      case 'completed': return 'COMPLETE'
+      case 'failed': return 'FAILED'
+      case 'cancelled': return 'CANCELLED'
+      case 'paused': return 'PAUSED'
+    }
+  }
+
+  // Queue counts and progress
+  const activeQueueItems = queueStatus.items.filter(i => i.status === 'pending' || i.status === 'downloading' || i.status === 'paused')
+  const completedQueueItems = queueStatus.items.filter(i => i.status === 'completed')
+  const hasQueueItems = queueStatus.items.length > 0
+
+  // Extract current queue item's progress
+  const currentQueueItem = queueStatus.items.find(i => i.id === queueStatus.currentItemId)
+  const queueProgress = currentQueueItem?.progress
+
+  // Effective progress is either direct download or queue download
+  const effectiveProgress = downloadProgress || queueProgress
+  const isActiveDownload = isDownloading || queueStatus.isProcessing
+
+  // Check if queue just finished (has completed items but no active ones)
+  const queueJustFinished = completedQueueItems.length > 0 && activeQueueItems.length === 0 && !queueStatus.isProcessing
+
   return (
     <>
+      {/* Binary Download Modal */}
+      {binaryMissing && (
+        <div className="binary-modal-overlay">
+          <div className="binary-modal">
+            <div className="binary-modal-icon">
+              <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
+                <polyline points="7 10 12 15 17 10"/>
+                <line x1="12" y1="15" x2="12" y2="3"/>
+              </svg>
+            </div>
+            <div className="binary-modal-title">REQUIRED COMPONENT MISSING</div>
+            <div className="binary-modal-text">
+              VidGrab requires yt-dlp to download videos. Click below to download it automatically.
+            </div>
+            {binaryError && (
+              <div className="binary-modal-error">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor">
+                  <path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm1 15h-2v-2h2v2zm0-4h-2V7h2v6z"/>
+                </svg>
+                {binaryError}
+              </div>
+            )}
+            {binaryDownloading ? (
+              <div className="binary-modal-progress">
+                <div className="binary-progress-bar">
+                  <div className="binary-progress-fill" style={{ width: `${binaryDownloadProgress}%` }} />
+                </div>
+                <div className="binary-progress-text">Downloading... {binaryDownloadProgress}%</div>
+              </div>
+            ) : (
+              <button className="binary-modal-btn" onClick={handleDownloadBinary}>
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                  <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
+                  <polyline points="7 10 12 15 17 10"/>
+                  <line x1="12" y1="15" x2="12" y2="3"/>
+                </svg>
+                DOWNLOAD YT-DLP
+              </button>
+            )}
+          </div>
+        </div>
+      )}
+
       {/* Title Bar */}
       <div className="title-bar">
         <div className="title-bar-title">
@@ -310,6 +557,9 @@ function App() {
             <line x1="12" y1="15" x2="12" y2="3"/>
           </svg>
           <span>Downloads</span>
+          {activeQueueItems.length > 0 && (
+            <span className="queue-count">{activeQueueItems.length}</span>
+          )}
         </button>
 
         <button className={`toolbar-btn ${view === 'history' ? 'active' : ''}`} onClick={() => setView('history')} title="History (Ctrl+2)">
@@ -391,13 +641,13 @@ function App() {
       )}
 
       {/* Main Content */}
-      <div className={`main-content ${isDownloading ? 'downloading' : ''}`}>
+      <div className={`main-content ${isActiveDownload ? 'downloading' : ''}`}>
         {view === 'downloads' && (
           <>
             {/* Content Panel (Left) */}
             <div className="content-panel">
-              {/* Empty State */}
-              {!contentInfo && !isDetecting && (
+              {/* Empty State - only show when no queue items and no content and not detecting */}
+              {!contentInfo && !isDetecting && !hasQueueItems && (
                 <div className="empty-state">
                   <div className="empty-state-icon">
                     <svg width="64" height="64" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1">
@@ -408,6 +658,16 @@ function App() {
                   </div>
                   <div className="empty-state-title">AWAITING INPUT<span className="blink">_</span></div>
                   <div className="empty-state-text">// Paste a YouTube URL above to begin analysis</div>
+                  <div className="empty-state-hint">
+                    <div className="hint-item">
+                      <span className="hint-icon">1</span>
+                      <span>Paste a YouTube URL above, or</span>
+                    </div>
+                    <div className="hint-item">
+                      <span className="hint-icon">2</span>
+                      <span>Use the browser extension to add to queue</span>
+                    </div>
+                  </div>
                 </div>
               )}
 
@@ -453,8 +713,24 @@ function App() {
                         </div>
                       </div>
                     </div>
+                    {/* Download All button for playlists/channels */}
+                    {(contentInfo.type === 'playlist' || contentInfo.type === 'channel') && !isActiveDownload && (
+                      <div className="content-actions">
+                        <button
+                          className="btn-download-all"
+                          onClick={handleDownloadAll}
+                          disabled={isLoadingFormats || isActiveDownload}
+                        >
+                          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                            <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
+                            <polyline points="7 10 12 15 17 10"/>
+                            <line x1="12" y1="15" x2="12" y2="3"/>
+                          </svg>
+                          {isLoadingFormats ? 'LOADING...' : `DOWNLOAD ALL (${contentInfo.videoCount || contentInfo.entries?.length || 0} VIDEOS)`}
+                        </button>
+                      </div>
+                    )}
                   </div>
-
 
                   {/* Error Display */}
                   {downloadError && (
@@ -516,6 +792,123 @@ function App() {
                     </>
                   )}
                 </>
+              )}
+
+              {/* Unified Queue Section - Always visible when there are items */}
+              {hasQueueItems && (
+                <div className="queue-section">
+                  <div className="queue-header">
+                    <div className="queue-stats">
+                      <span className="queue-title">DOWNLOAD QUEUE</span>
+                      <div className="queue-badges">
+                        {queueStatus.items.filter(i => i.status === 'downloading').length > 0 && (
+                          <span className="queue-badge downloading">
+                            {queueStatus.items.filter(i => i.status === 'downloading').length} active
+                          </span>
+                        )}
+                        {queueStatus.items.filter(i => i.status === 'pending' || i.status === 'paused').length > 0 && (
+                          <span className="queue-badge pending">
+                            {queueStatus.items.filter(i => i.status === 'pending' || i.status === 'paused').length} pending
+                          </span>
+                        )}
+                        {completedQueueItems.length > 0 && (
+                          <span className="queue-badge completed">
+                            {completedQueueItems.length} done
+                          </span>
+                        )}
+                      </div>
+                    </div>
+                    <div className="queue-controls">
+                      <button
+                        className={`btn-queue-control ${queueStatus.isPaused ? 'paused' : ''}`}
+                        onClick={handlePauseResumeQueue}
+                        disabled={activeQueueItems.length === 0}
+                      >
+                        {queueStatus.isPaused ? (
+                          <>
+                            <svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor">
+                              <polygon points="5 3 19 12 5 21 5 3"/>
+                            </svg>
+                            RESUME
+                          </>
+                        ) : (
+                          <>
+                            <svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor">
+                              <rect x="6" y="4" width="4" height="16"/>
+                              <rect x="14" y="4" width="4" height="16"/>
+                            </svg>
+                            PAUSE
+                          </>
+                        )}
+                      </button>
+                      <button className="btn-clear" onClick={handleClearQueue}>CLEAR</button>
+                    </div>
+                  </div>
+
+                  <div className="queue-list">
+                    {queueStatus.items.map((item) => (
+                      <div
+                        key={item.id}
+                        className={`queue-item ${item.status === 'downloading' ? 'active' : ''} ${item.status === 'completed' ? 'completed' : ''} ${item.status === 'failed' ? 'failed' : ''} ${item.status === 'paused' ? 'paused' : ''}`}
+                      >
+                        <div className="queue-item-thumb">
+                          {item.thumbnail ? (
+                            <img src={item.thumbnail} alt={item.title} />
+                          ) : (
+                            <div className="thumbnail-placeholder">
+                              <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor">
+                                <path d="M8 5v14l11-7z"/>
+                              </svg>
+                            </div>
+                          )}
+                        </div>
+
+                        <div className="queue-item-info">
+                          <div className="queue-item-title">{item.title}</div>
+                          <div className="queue-item-meta">
+                            <span className="queue-item-source">{item.source === 'extension' ? 'EXT' : 'APP'}</span>
+                            <span className="queue-item-format">{item.audioOnly ? 'AUDIO' : 'VIDEO'}</span>
+                            <span className="queue-item-time">{formatTime(item.addedAt)}</span>
+                          </div>
+                          {item.status === 'failed' && item.error && (
+                            <div className="queue-item-error">{item.error}</div>
+                          )}
+                        </div>
+
+                        <div className="queue-item-status">
+                          {getQueueStatusIcon(item.status)}
+                          <span className={`status-label ${item.status}`}>{getQueueStatusLabel(item.status)}</span>
+                        </div>
+
+                        <div className="queue-item-actions">
+                          {(item.status === 'pending' || item.status === 'downloading' || item.status === 'paused') && (
+                            <button
+                              className="queue-btn-cancel"
+                              onClick={() => handleCancelQueueItem(item.id)}
+                              title="Cancel"
+                            >
+                              <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor">
+                                <rect x="6" y="6" width="12" height="12"/>
+                              </svg>
+                            </button>
+                          )}
+                          {(item.status === 'completed' || item.status === 'failed' || item.status === 'cancelled') && (
+                            <button
+                              className="queue-btn-remove"
+                              onClick={() => handleRemoveQueueItem(item.id)}
+                              title="Remove"
+                            >
+                              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                                <line x1="18" y1="6" x2="6" y2="18"/>
+                                <line x1="6" y1="6" x2="18" y2="18"/>
+                              </svg>
+                            </button>
+                          )}
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
               )}
             </div>
 
@@ -754,6 +1147,35 @@ function App() {
             </div>
 
             <div className="settings-group">
+              <div className="settings-group-title">DEBUG LOGS</div>
+              <div className="setting-item">
+                <div className="setting-info">
+                  <div className="setting-label">Error History</div>
+                  <div className="setting-description">{errorLogs.length} recent errors/warnings</div>
+                </div>
+                <div className="log-actions">
+                  <button className="btn-secondary" onClick={loadErrorLogs}>REFRESH</button>
+                  <button className="btn-secondary" onClick={handleCopyLogs} disabled={errorLogs.length === 0}>COPY</button>
+                  <button className="btn-secondary" onClick={handleOpenLogFile}>OPEN FILE</button>
+                </div>
+              </div>
+              {errorLogs.length > 0 && (
+                <div className="error-log-list">
+                  {errorLogs.slice(0, 20).map((log, index) => (
+                    <div key={index} className={`error-log-item ${log.level}`}>
+                      <div className="error-log-header">
+                        <span className={`error-log-level ${log.level}`}>{log.level.toUpperCase()}</span>
+                        <span className="error-log-time">{new Date(log.timestamp).toLocaleString()}</span>
+                      </div>
+                      <div className="error-log-message">{log.message}</div>
+                      {log.details && <div className="error-log-details">{log.details}</div>}
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+
+            <div className="settings-group">
               <div className="settings-group-title">ABOUT</div>
               <div className="setting-item">
                 <div className="setting-info">
@@ -767,7 +1189,32 @@ function App() {
                   <div className="setting-description">Developed by Nazeef Masood</div>
                 </div>
               </div>
+              <div className="setting-item clickable" onClick={handleCreditsClick}>
+                <div className="setting-info">
+                  <div className="setting-label">Special Thanks</div>
+                  <div className="setting-description credits-name">Ali Awan - First tester & supporter</div>
+                </div>
+                <span className="credits-hint">Click me!</span>
+              </div>
             </div>
+          </div>
+        )}
+
+        {/* Confetti overlay */}
+        {showConfetti && (
+          <div className="confetti-overlay">
+            {[...Array(50)].map((_, i) => (
+              <div
+                key={i}
+                className="confetti-piece"
+                style={{
+                  left: `${Math.random() * 100}%`,
+                  animationDelay: `${Math.random() * 0.5}s`,
+                  backgroundColor: ['#00ff88', '#ffaa00', '#ff6b6b', '#00d4ff', '#ff00ff'][Math.floor(Math.random() * 5)],
+                }}
+              />
+            ))}
+            <div className="confetti-text">Thanks Ali!</div>
           </div>
         )}
       </div>
@@ -811,31 +1258,34 @@ function App() {
         </div>
       )}
 
-      {/* Compact Progress Bar - Fixed above status bar - Only on downloads tab */}
-      {isDownloading && view === 'downloads' && (
+      {/* Compact Progress Bar - Fixed above status bar */}
+      {isActiveDownload && view === 'downloads' && (
         <div className={`progress-bar-fixed ${contentInfo && !showSuccess ? 'with-sidebar' : ''}`}>
           <div className="progress-bar-inner">
             <div className="progress-info">
               <span className="progress-label">
-                {downloadProgress?.status === 'downloading' && 'DOWNLOADING'}
-                {downloadProgress?.status === 'merging' && 'MERGING'}
-                {downloadProgress?.status === 'processing' && 'PROCESSING'}
-                {downloadProgress?.status === 'waiting' && 'WAITING'}
-                {downloadProgress?.status === 'complete' && 'FINALIZING'}
-                {!downloadProgress && 'INITIALIZING'}
+                {effectiveProgress?.status === 'downloading' && 'DOWNLOADING'}
+                {effectiveProgress?.status === 'merging' && 'MERGING'}
+                {effectiveProgress?.status === 'processing' && 'PROCESSING'}
+                {effectiveProgress?.status === 'waiting' && 'WAITING'}
+                {effectiveProgress?.status === 'complete' && 'FINALIZING'}
+                {!effectiveProgress && 'INITIALIZING'}
               </span>
-              <span className="progress-percent">{downloadProgress?.percent?.toFixed(0) || 0}%</span>
+              <span className="progress-percent">{effectiveProgress?.percent?.toFixed(0) || 0}%</span>
             </div>
             <div className="progress-bar">
               <div className="progress-bar-bg" />
-              <div className={`progress-fill ${!downloadProgress ? 'progress-fill-init' : ''}`} style={{ width: `${downloadProgress?.percent || 0}%` }} />
+              <div className={`progress-fill ${!effectiveProgress ? 'progress-fill-init' : ''}`} style={{ width: `${effectiveProgress?.percent || 0}%` }} />
             </div>
             <div className="progress-stats-compact">
-              <span><strong>{downloadProgress?.speed || '--'}</strong> Speed</span>
-              <span><strong>{downloadProgress?.eta || '--'}</strong> ETA</span>
-              <span><strong>{downloadProgress?.total || '--'}</strong> Size</span>
-              {downloadProgress?.totalFiles && downloadProgress.totalFiles > 1 && (
-                <span>Video <strong>{downloadProgress.currentIndex || 1}/{downloadProgress.totalFiles}</strong></span>
+              <span><strong>{effectiveProgress?.speed || '--'}</strong> Speed</span>
+              <span><strong>{effectiveProgress?.eta || '--'}</strong> ETA</span>
+              <span><strong>{effectiveProgress?.total || '--'}</strong> Size</span>
+              {effectiveProgress?.totalFiles && effectiveProgress.totalFiles > 1 && (
+                <span>Video <strong>{effectiveProgress.currentIndex || 1}/{effectiveProgress.totalFiles}</strong></span>
+              )}
+              {currentQueueItem && (
+                <span className="progress-title-compact">{currentQueueItem.title}</span>
               )}
             </div>
           </div>
@@ -845,14 +1295,17 @@ function App() {
       {/* Status Bar */}
       <div className="status-bar">
         <div className="status-bar-left">
-          <div className={`status-indicator ${isDownloading ? 'downloading' : ''} ${downloadError ? 'error' : ''}`} />
+          <div className={`status-indicator ${isActiveDownload ? 'downloading' : ''} ${downloadError ? 'error' : ''} ${queueStatus.isPaused ? 'paused' : ''} ${queueJustFinished ? 'complete' : ''}`} />
           <span>
-            {isDownloading && downloadProgress?.status === 'downloading' && `DOWNLOADING ${downloadProgress.percent?.toFixed(0)}%`}
-            {isDownloading && downloadProgress?.status === 'merging' && 'MERGING FILES'}
-            {isDownloading && !downloadProgress && 'INITIALIZING'}
-            {!isDownloading && downloadError && 'ERROR'}
-            {!isDownloading && showSuccess && 'COMPLETE'}
-            {!isDownloading && !downloadError && !showSuccess && 'READY'}
+            {isActiveDownload && effectiveProgress?.status === 'downloading' && `DOWNLOADING ${effectiveProgress.percent?.toFixed(0)}%`}
+            {isActiveDownload && effectiveProgress?.status === 'merging' && 'MERGING FILES'}
+            {isActiveDownload && effectiveProgress?.status === 'waiting' && 'WAITING FOR NEXT'}
+            {isActiveDownload && !effectiveProgress && 'INITIALIZING'}
+            {!isActiveDownload && queueStatus.isPaused && activeQueueItems.length > 0 && 'PAUSED'}
+            {!isActiveDownload && !queueStatus.isPaused && downloadError && 'ERROR'}
+            {!isActiveDownload && !queueStatus.isPaused && (showSuccess || queueJustFinished) && `COMPLETE (${completedQueueItems.length} DOWNLOADED)`}
+            {!isActiveDownload && !queueStatus.isPaused && !downloadError && !showSuccess && !queueJustFinished && activeQueueItems.length > 0 && `${activeQueueItems.length} IN QUEUE`}
+            {!isActiveDownload && !queueStatus.isPaused && !downloadError && !showSuccess && !queueJustFinished && activeQueueItems.length === 0 && 'READY'}
           </span>
         </div>
         <span>{history.length} DOWNLOADS LOGGED // {theme.toUpperCase()} MODE</span>

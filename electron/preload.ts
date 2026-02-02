@@ -94,4 +94,75 @@ contextBridge.exposeInMainWorld('electronAPI', {
   openFile: (filePath: string) => ipcRenderer.invoke('file:open', filePath),
   openFolder: (filePath: string) => ipcRenderer.invoke('file:showInFolder', filePath),
   selectFolder: () => ipcRenderer.invoke('folder:select'),
+
+  // Queue operations
+  getQueue: () => ipcRenderer.invoke('queue:get'),
+  addToQueue: (item: {
+    url: string
+    title: string
+    thumbnail?: string
+    format: string
+    audioOnly: boolean
+    source: 'app' | 'extension'
+  }) => ipcRenderer.invoke('queue:add', item),
+  removeFromQueue: (id: string) => ipcRenderer.invoke('queue:remove', id),
+  cancelQueueItem: (id: string) => ipcRenderer.invoke('queue:cancel', id),
+  pauseQueue: () => ipcRenderer.invoke('queue:pause'),
+  resumeQueue: () => ipcRenderer.invoke('queue:resume'),
+  clearQueue: () => ipcRenderer.invoke('queue:clear'),
+  onQueueUpdate: (callback: (status: {
+    items: Array<{
+      id: string
+      url: string
+      title: string
+      thumbnail?: string
+      format: string
+      audioOnly: boolean
+      status: 'pending' | 'downloading' | 'completed' | 'failed' | 'cancelled' | 'paused'
+      progress?: {
+        percent: number
+        speed?: string
+        eta?: string
+        status: string
+      }
+      addedAt: number
+      source: 'app' | 'extension'
+      error?: string
+    }>
+    isProcessing: boolean
+    isPaused: boolean
+    currentItemId: string | null
+  }) => void) => {
+    const subscription = (_event: Electron.IpcRendererEvent, status: Parameters<typeof callback>[0]) => callback(status)
+    ipcRenderer.on('queue:update', subscription)
+    return () => ipcRenderer.removeListener('queue:update', subscription)
+  },
+
+  // Logger operations
+  getErrorLogs: () => ipcRenderer.invoke('logger:getErrors'),
+  openLogFile: () => ipcRenderer.invoke('logger:openLogFile'),
+
+  // Binary management
+  checkBinary: () => ipcRenderer.invoke('binary:check'),
+  downloadBinary: () => ipcRenderer.invoke('binary:download'),
+  onBinaryDownloadStart: (callback: (data: { name: string }) => void) => {
+    const subscription = (_event: Electron.IpcRendererEvent, data: Parameters<typeof callback>[0]) => callback(data)
+    ipcRenderer.on('binary:download-start', subscription)
+    return () => ipcRenderer.removeListener('binary:download-start', subscription)
+  },
+  onBinaryDownloadProgress: (callback: (data: { percent: number; downloaded: number; total: number }) => void) => {
+    const subscription = (_event: Electron.IpcRendererEvent, data: Parameters<typeof callback>[0]) => callback(data)
+    ipcRenderer.on('binary:download-progress', subscription)
+    return () => ipcRenderer.removeListener('binary:download-progress', subscription)
+  },
+  onBinaryDownloadComplete: (callback: (data: { path: string }) => void) => {
+    const subscription = (_event: Electron.IpcRendererEvent, data: Parameters<typeof callback>[0]) => callback(data)
+    ipcRenderer.on('binary:download-complete', subscription)
+    return () => ipcRenderer.removeListener('binary:download-complete', subscription)
+  },
+  onBinaryDownloadError: (callback: (data: { error: string }) => void) => {
+    const subscription = (_event: Electron.IpcRendererEvent, data: Parameters<typeof callback>[0]) => callback(data)
+    ipcRenderer.on('binary:download-error', subscription)
+    return () => ipcRenderer.removeListener('binary:download-error', subscription)
+  },
 })

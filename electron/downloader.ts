@@ -1,8 +1,9 @@
-import { spawn, ChildProcess } from 'child_process'
+import { spawn, ChildProcess, execSync } from 'child_process'
 import * as path from 'path'
 import * as fs from 'fs'
 import { EventEmitter } from 'events'
 import { app } from 'electron'
+import { logger } from './logger'
 
 interface ContentInfo {
   type: 'video' | 'playlist' | 'channel'
@@ -62,11 +63,53 @@ export class Downloader extends EventEmitter {
   private ytdlpPath: string
   private ffmpegPath: string
   private cancelled = false
+  private verified = false
 
   constructor() {
     super()
     this.ytdlpPath = this.getYtdlpPath()
     this.ffmpegPath = this.getFfmpegPath()
+    this.verifyBinaries()
+  }
+
+  private verifyBinaries(): void {
+    try {
+      // Check yt-dlp
+      logger.info('Verifying yt-dlp binary', this.ytdlpPath)
+      if (fs.existsSync(this.ytdlpPath)) {
+        const stats = fs.statSync(this.ytdlpPath)
+        logger.info('yt-dlp binary found', `Size: ${stats.size} bytes, Mode: ${stats.mode.toString(8)}`)
+
+        // Try to get version
+        try {
+          const version = execSync(`"${this.ytdlpPath}" --version`, { timeout: 10000 }).toString().trim()
+          logger.info('yt-dlp version', version)
+          this.verified = true
+        } catch (versionErr) {
+          logger.error('Failed to get yt-dlp version', versionErr instanceof Error ? versionErr : String(versionErr))
+        }
+      } else {
+        logger.error('yt-dlp binary not found', this.ytdlpPath)
+      }
+
+      // Check ffmpeg
+      logger.info('Verifying ffmpeg binary', this.ffmpegPath)
+      if (this.ffmpegPath && this.ffmpegPath !== 'ffmpeg') {
+        if (fs.existsSync(this.ffmpegPath)) {
+          logger.info('ffmpeg binary found', this.ffmpegPath)
+        } else {
+          logger.warn('ffmpeg binary not found at path', this.ffmpegPath)
+        }
+      } else {
+        logger.info('Using system ffmpeg')
+      }
+    } catch (err) {
+      logger.error('Binary verification failed', err instanceof Error ? err : String(err))
+    }
+  }
+
+  isVerified(): boolean {
+    return this.verified
   }
 
   private getYtdlpPath(): string {
@@ -136,6 +179,7 @@ export class Downloader extends EventEmitter {
         if (isDetection) {
           this.detectionProcess = null
         }
+        logger.error('yt-dlp spawn error', `Args: ${args.join(' ')}\nError: ${err.message}`)
         reject(err)
       })
     })

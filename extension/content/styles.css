@@ -1,0 +1,665 @@
+/* VidGrab Content Script Styles - Cyberbrutalism */
+
+/* CSS Variables matching main app */
+:root {
+  --vidgrab-bg-primary: #0a0a0a;
+  --vidgrab-bg-secondary: #111111;
+  --vidgrab-bg-tertiary: #1a1a1a;
+  --vidgrab-bg-elevated: #222222;
+  --vidgrab-border: #2a2a2a;
+  --vidgrab-border-accent: #3a3a3a;
+  --vidgrab-text-primary: #ffffff;
+  --vidgrab-text-secondary: #888888;
+  --vidgrab-text-muted: #555555;
+  --vidgrab-accent: #00ff88;
+  --vidgrab-accent-dim: #00cc6a;
+  --vidgrab-accent-glow: rgba(0, 255, 136, 0.3);
+  --vidgrab-error: #ff3366;
+  --vidgrab-success: #00ff88;
+}
+
+/* Download Button on YouTube */
+.vidgrab-btn-wrapper {
+  display: inline-flex;
+  align-items: center;
+  margin-left: 8px;
+}
+
+.vidgrab-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 0 16px;
+  height: 36px;
+  border: 1px solid var(--vidgrab-accent);
+  background: transparent;
+  color: var(--vidgrab-accent);
+  font-family: 'Segoe UI', system-ui, sans-serif;
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  position: relative;
+  overflow: hidden;
+}
+
+.vidgrab-btn::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: var(--vidgrab-accent-glow);
+  transform: scaleX(0);
+  transform-origin: left;
+  transition: transform 0.2s ease;
+}
+
+.vidgrab-btn:hover::before {
+  transform: scaleX(1);
+}
+
+.vidgrab-btn:hover {
+  background: var(--vidgrab-accent);
+  color: var(--vidgrab-bg-primary);
+  box-shadow: 0 0 20px var(--vidgrab-accent-glow);
+}
+
+.vidgrab-btn svg {
+  width: 16px;
+  height: 16px;
+  flex-shrink: 0;
+  position: relative;
+  z-index: 1;
+}
+
+.vidgrab-btn span {
+  position: relative;
+  z-index: 1;
+}
+
+.vidgrab-btn.loading {
+  pointer-events: none;
+  opacity: 0.7;
+}
+
+.vidgrab-btn.loading svg {
+  animation: vidgrab-spin 1s linear infinite;
+}
+
+@keyframes vidgrab-spin {
+  from { transform: rotate(0deg); }
+  to { transform: rotate(360deg); }
+}
+
+/* Modal Overlay */
+.vidgrab-modal {
+  position: fixed;
+  inset: 0;
+  z-index: 999999;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-family: 'Segoe UI', system-ui, sans-serif;
+}
+
+.vidgrab-modal.vidgrab-hidden {
+  display: none;
+}
+
+.vidgrab-modal-backdrop {
+  position: absolute;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.85);
+  backdrop-filter: blur(4px);
+}
+
+.vidgrab-modal-content {
+  position: relative;
+  width: 400px;
+  max-width: 90vw;
+  max-height: 80vh;
+  background: var(--vidgrab-bg-primary);
+  border: 1px solid var(--vidgrab-border);
+  display: flex;
+  flex-direction: column;
+  animation: vidgrab-modal-in 0.3s ease-out;
+  box-shadow: 0 0 60px rgba(0, 255, 136, 0.1);
+}
+
+@keyframes vidgrab-modal-in {
+  from {
+    opacity: 0;
+    transform: scale(0.95) translateY(-10px);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1) translateY(0);
+  }
+}
+
+/* Modal Header */
+.vidgrab-modal-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 12px 16px;
+  background: var(--vidgrab-bg-secondary);
+  border-bottom: 1px solid var(--vidgrab-border);
+}
+
+.vidgrab-modal-logo {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.2em;
+  color: var(--vidgrab-accent);
+}
+
+.vidgrab-modal-logo svg {
+  color: var(--vidgrab-accent);
+}
+
+.vidgrab-modal-close {
+  width: 28px;
+  height: 28px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: transparent;
+  border: 1px solid var(--vidgrab-border);
+  color: var(--vidgrab-text-muted);
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.vidgrab-modal-close:hover {
+  border-color: var(--vidgrab-error);
+  color: var(--vidgrab-error);
+}
+
+/* Modal Body */
+.vidgrab-modal-body {
+  flex: 1;
+  overflow-y: auto;
+  padding: 16px;
+}
+
+/* States */
+.vidgrab-state {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  text-align: center;
+  padding: 32px 16px;
+  min-height: 200px;
+}
+
+.vidgrab-hidden {
+  display: none !important;
+}
+
+.vidgrab-state-icon {
+  width: 48px;
+  height: 48px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 24px;
+  font-weight: 700;
+  margin-bottom: 16px;
+  border: 2px solid currentColor;
+}
+
+.vidgrab-state-icon.success {
+  color: var(--vidgrab-success);
+  background: rgba(0, 255, 136, 0.1);
+}
+
+.vidgrab-state-icon.error {
+  color: var(--vidgrab-error);
+  background: rgba(255, 51, 102, 0.1);
+}
+
+.vidgrab-state-title {
+  font-size: 14px;
+  font-weight: 700;
+  letter-spacing: 0.15em;
+  text-transform: uppercase;
+  color: var(--vidgrab-text-primary);
+  margin-bottom: 8px;
+}
+
+.vidgrab-state-text {
+  font-size: 12px;
+  color: var(--vidgrab-text-muted);
+}
+
+/* Spinner */
+.vidgrab-spinner {
+  width: 24px;
+  height: 24px;
+  border: 2px solid var(--vidgrab-border);
+  border-top-color: var(--vidgrab-accent);
+  animation: vidgrab-spin 0.8s linear infinite;
+  margin-bottom: 16px;
+}
+
+.vidgrab-spinner-small {
+  width: 14px;
+  height: 14px;
+  border: 2px solid rgba(0, 0, 0, 0.2);
+  border-top-color: currentColor;
+  animation: vidgrab-spin 0.8s linear infinite;
+}
+
+.vidgrab-blink {
+  animation: vidgrab-blink 1s step-end infinite;
+}
+
+@keyframes vidgrab-blink {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0; }
+}
+
+/* Video Info */
+.vidgrab-video-info {
+  display: flex;
+  gap: 12px;
+  margin-bottom: 16px;
+  padding-bottom: 16px;
+  border-bottom: 1px solid var(--vidgrab-border);
+}
+
+.vidgrab-video-thumb {
+  width: 120px;
+  height: 68px;
+  background: var(--vidgrab-bg-tertiary);
+  border: 1px solid var(--vidgrab-border);
+  overflow: hidden;
+  flex-shrink: 0;
+  position: relative;
+}
+
+.vidgrab-video-thumb::before,
+.vidgrab-video-thumb::after {
+  content: '';
+  position: absolute;
+  width: 8px;
+  height: 8px;
+  border: 1px solid var(--vidgrab-accent);
+}
+
+.vidgrab-video-thumb::before {
+  top: 2px;
+  left: 2px;
+  border-right: none;
+  border-bottom: none;
+}
+
+.vidgrab-video-thumb::after {
+  bottom: 2px;
+  right: 2px;
+  border-left: none;
+  border-top: none;
+}
+
+.vidgrab-video-thumb img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.vidgrab-thumb-placeholder {
+  width: 100%;
+  height: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--vidgrab-text-muted);
+}
+
+.vidgrab-thumb-placeholder svg {
+  width: 24px;
+  height: 24px;
+}
+
+.vidgrab-video-details {
+  flex: 1;
+  min-width: 0;
+}
+
+.vidgrab-video-title {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--vidgrab-text-primary);
+  line-height: 1.3;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+  margin-bottom: 8px;
+}
+
+.vidgrab-video-meta {
+  display: inline-block;
+  font-size: 9px;
+  font-weight: 700;
+  letter-spacing: 0.1em;
+  padding: 3px 8px;
+  background: var(--vidgrab-accent);
+  color: var(--vidgrab-bg-primary);
+}
+
+/* Sections */
+.vidgrab-section {
+  margin-bottom: 16px;
+}
+
+.vidgrab-section-title {
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.15em;
+  text-transform: uppercase;
+  color: var(--vidgrab-accent);
+  margin-bottom: 8px;
+}
+
+/* Format List */
+.vidgrab-format-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.vidgrab-format-btn {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 14px;
+  background: transparent;
+  border: 1px solid var(--vidgrab-border);
+  color: var(--vidgrab-text-secondary);
+  font-family: inherit;
+  font-size: 12px;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  position: relative;
+}
+
+.vidgrab-format-btn::before {
+  content: '';
+  position: absolute;
+  left: 0;
+  top: 0;
+  bottom: 0;
+  width: 0;
+  background: var(--vidgrab-accent);
+  transition: width 0.2s ease;
+}
+
+.vidgrab-format-btn:hover {
+  border-color: var(--vidgrab-accent);
+  color: var(--vidgrab-text-primary);
+  background: var(--vidgrab-bg-tertiary);
+}
+
+.vidgrab-format-btn:hover::before {
+  width: 3px;
+}
+
+.vidgrab-format-btn.selected {
+  border-color: var(--vidgrab-accent);
+  background: var(--vidgrab-accent-glow);
+  color: var(--vidgrab-text-primary);
+}
+
+.vidgrab-format-btn.selected::before {
+  width: 3px;
+}
+
+.vidgrab-format-quality {
+  font-weight: 700;
+  position: relative;
+  z-index: 1;
+}
+
+.vidgrab-format-ext {
+  font-size: 9px;
+  font-weight: 600;
+  letter-spacing: 0.05em;
+  padding: 2px 5px;
+  background: var(--vidgrab-bg-tertiary);
+  color: var(--vidgrab-text-muted);
+  position: relative;
+  z-index: 1;
+}
+
+.vidgrab-format-btn.selected .vidgrab-format-ext {
+  background: var(--vidgrab-accent);
+  color: var(--vidgrab-bg-primary);
+}
+
+/* Download Button */
+.vidgrab-download-btn {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  padding: 14px 20px;
+  background: var(--vidgrab-accent);
+  border: none;
+  color: var(--vidgrab-bg-primary);
+  font-family: inherit;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.15em;
+  text-transform: uppercase;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  position: relative;
+  overflow: hidden;
+  margin-top: 8px;
+}
+
+.vidgrab-download-btn::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: -100%;
+  width: 100%;
+  height: 100%;
+  background: linear-gradient(90deg, transparent, rgba(255,255,255,0.2), transparent);
+  transition: left 0.4s ease;
+}
+
+.vidgrab-download-btn:hover::before {
+  left: 100%;
+}
+
+.vidgrab-download-btn:hover {
+  background: var(--vidgrab-accent-dim);
+  transform: translateY(-2px);
+  box-shadow: 0 4px 20px var(--vidgrab-accent-glow);
+}
+
+.vidgrab-download-btn:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+  transform: none;
+}
+
+.vidgrab-download-btn svg {
+  width: 16px;
+  height: 16px;
+}
+
+/* Secondary Button */
+.vidgrab-btn-secondary {
+  padding: 10px 20px;
+  background: transparent;
+  border: 1px solid var(--vidgrab-border);
+  color: var(--vidgrab-text-secondary);
+  font-family: inherit;
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  margin-top: 16px;
+}
+
+.vidgrab-btn-secondary:hover {
+  border-color: var(--vidgrab-accent);
+  color: var(--vidgrab-accent);
+}
+
+/* Modal Footer */
+.vidgrab-modal-footer {
+  padding: 8px 16px;
+  background: var(--vidgrab-bg-secondary);
+  border-top: 1px solid var(--vidgrab-border);
+  font-size: 9px;
+  color: var(--vidgrab-text-muted);
+  letter-spacing: 0.1em;
+}
+
+/* Notification Toast */
+.vidgrab-notification {
+  position: fixed;
+  bottom: 20px;
+  left: 50%;
+  transform: translateX(-50%) translateY(100px);
+  padding: 12px 24px;
+  background: var(--vidgrab-bg-secondary);
+  border: 1px solid var(--vidgrab-border);
+  font-family: 'Segoe UI', system-ui, sans-serif;
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--vidgrab-text-primary);
+  z-index: 9999999;
+  opacity: 0;
+  transition: all 0.3s ease;
+}
+
+.vidgrab-notification.show {
+  transform: translateX(-50%) translateY(0);
+  opacity: 1;
+}
+
+.vidgrab-notification.success {
+  border-color: var(--vidgrab-success);
+  color: var(--vidgrab-success);
+}
+
+.vidgrab-notification.error {
+  border-color: var(--vidgrab-error);
+  color: var(--vidgrab-error);
+}
+
+/* YouTube Shorts support */
+ytd-reel-video-renderer .vidgrab-btn-wrapper {
+  position: absolute;
+  bottom: 180px;
+  right: 12px;
+}
+
+ytd-reel-video-renderer .vidgrab-btn {
+  flex-direction: column;
+  width: 48px;
+  height: 48px;
+  padding: 8px;
+}
+
+ytd-reel-video-renderer .vidgrab-btn span {
+  display: none;
+}
+
+ytd-reel-video-renderer .vidgrab-btn svg {
+  width: 24px;
+  height: 24px;
+}
+
+/* Scrollbar */
+.vidgrab-modal-body::-webkit-scrollbar {
+  width: 6px;
+}
+
+.vidgrab-modal-body::-webkit-scrollbar-track {
+  background: var(--vidgrab-bg-primary);
+}
+
+.vidgrab-modal-body::-webkit-scrollbar-thumb {
+  background: var(--vidgrab-border-accent);
+}
+
+.vidgrab-modal-body::-webkit-scrollbar-thumb:hover {
+  background: var(--vidgrab-text-muted);
+}
+
+/* Playlist/Channel Download Button */
+.vidgrab-playlist-wrapper {
+  display: inline-flex;
+  align-items: center;
+  margin-left: 12px;
+}
+
+.vidgrab-channel-wrapper {
+  margin-left: 8px;
+}
+
+.vidgrab-playlist-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 20px;
+  border: 2px solid var(--vidgrab-accent);
+  background: var(--vidgrab-accent);
+  color: var(--vidgrab-bg-primary);
+  font-family: 'Segoe UI', system-ui, sans-serif;
+  font-size: 13px;
+  font-weight: 700;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  position: relative;
+  overflow: hidden;
+}
+
+.vidgrab-playlist-btn::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: -100%;
+  width: 100%;
+  height: 100%;
+  background: linear-gradient(90deg, transparent, rgba(255,255,255,0.3), transparent);
+  transition: left 0.4s ease;
+}
+
+.vidgrab-playlist-btn:hover::before {
+  left: 100%;
+}
+
+.vidgrab-playlist-btn:hover {
+  background: var(--vidgrab-accent-dim);
+  border-color: var(--vidgrab-accent-dim);
+  transform: translateY(-2px);
+  box-shadow: 0 4px 20px var(--vidgrab-accent-glow);
+}
+
+.vidgrab-playlist-btn svg {
+  width: 18px;
+  height: 18px;
+  flex-shrink: 0;
+}
+
+.vidgrab-playlist-btn span {
+  white-space: nowrap;
+}

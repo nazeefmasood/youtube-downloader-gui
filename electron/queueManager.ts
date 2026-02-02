@@ -1,0 +1,323 @@
+import { EventEmitter } from 'events'
+import { Downloader } from './downloader'
+import { app } from 'electron'
+import * as path from 'path'
+import * as fs from 'fs'
+import { logger } from './logger'
+
+export interface QueueItem {
+  id: string
+  url: string
+  title: string
+  thumbnail?: string
+  format: string
+  audioOnly: boolean
+  status: 'pending' | 'downloading' | 'completed' | 'failed' | 'cancelled' | 'paused'
+  progress?: DownloadProgress
+  addedAt: number
+  source: 'app' | 'extension'
+  error?: string
+}
+
+export interface DownloadProgress {
+  percent: number
+  speed?: string
+  eta?: string
+  downloaded?: string
+  total?: string
+  currentFile?: string
+  currentIndex?: number
+  totalFiles?: number
+  status: 'downloading' | 'merging' | 'processing' | 'complete' | 'error' | 'waiting'
+}
+
+export interface QueueStatus {
+  items: QueueItem[]
+  isProcessing: boolean
+  isPaused: boolean
+  currentItemId: string | null
+}
+
+export class QueueManager extends EventEmitter {
+  private items: QueueItem[] = []
+  private isProcessing = false
+  private isPaused = false
+  private currentItemId: string | null = null
+  private downloader: Downloader
+  private downloadPath: string
+  private settings: { organizeByType?: boolean; delayBetweenDownloads?: number } = {}
+  private queueFilePath: string
+
+  constructor() {
+    super()
+    this.downloader = new Downloader()
+    this.downloadPath = this.getDefaultDownloadPath()
+    this.queueFilePath = path.join(app.getPath('userData'), 'queue.json')
+    this.loadQueue()
+    this.setupDownloaderListeners()
+  }
+
+  private loadQueue(): void {
+    try {
+      if (fs.existsSync(this.queueFilePath)) {
+        const data = JSON.parse(fs.readFileSync(this.queueFilePath, 'utf-8'))
+        this.items = (data.items || []).map((item: QueueItem) => ({
+          ...item,
+          // Reset downloading items to paused on restart (they were interrupted)
+          status: item.status === 'downloading' ? 'paused' : item.status,
+          // Clear progress for interrupted downloads
+          progress: item.status === 'downloading' ? undefined : item.progress,
+        }))
+        this.isPaused = data.isPaused || false
+        logger.info('Queue loaded', `${this.items.length} items, paused: ${this.isPaused}`)
+      }
+    } catch (err) {
+      logger.error('Failed to load queue', err instanceof Error ? err : String(err))
+      this.items = []
+      this.isPaused = false
+    }
+  }
+
+  private saveQueue(): void {
+    try {
+      const data = {
+        items: this.items,
+        isPaused: this.isPaused,
+      }
+      fs.writeFileSync(this.queueFilePath, JSON.stringify(data, null, 2), 'utf-8')
+    } catch (err) {
+      logger.error('Failed to save queue', err instanceof Error ? err : String(err))
+    }
+  }
+
+  private getDefaultDownloadPath(): string {
+    const home = app.getPath('home')
+    return path.join(home, 'Downloads', 'Youtube Downloads')
+  }
+
+  setDownloadPath(downloadPath: string): void {
+    this.downloadPath = downloadPath
+  }
+
+  setSettings(settings: { organizeByType?: boolean; delayBetweenDownloads?: number }): void {
+    this.settings = settings
+  }
+
+  private setupDownloaderListeners(): void {
+    this.downloader.on('progress', (progress: DownloadProgress) => {
+      if (this.currentItemId) {
+        const item = this.items.find(i => i.id === this.currentItemId)
+        if (item) {
+          item.progress = progress
+          item.status = 'downloading'
+          this.emitUpdate()
+        }
+      }
+    })
+
+    this.downloader.on('complete', (result: { success: boolean; filePath?: string; error?: string }) => {
+      if (this.currentItemId) {
+        const item = this.items.find(i => i.id === this.currentItemId)
+        if (item) {
+          if (result.success) {
+            item.status = 'completed'
+            logger.info('Download completed', item.title)
+          } else {
+            item.status = 'failed'
+            item.error = result.error
+            logger.error('Download failed', `${item.title}: ${result.error}`)
+          }
+        }
+        this.currentItemId = null
+        this.isProcessing = false
+        // Emit update AFTER clearing isProcessing so UI shows correct state
+        this.emitUpdate()
+
+        // Process next item after a short delay
+        setTimeout(() => {
+          if (!this.isPaused) {
+            this.processNext()
+          }
+        }, 1000)
+      }
+    })
+
+    this.downloader.on('error', (error: string) => {
+      if (this.currentItemId) {
+        const item = this.items.find(i => i.id === this.currentItemId)
+        if (item) {
+          item.status = 'failed'
+          item.error = error
+          this.emitUpdate()
+        }
+        this.currentItemId = null
+        this.isProcessing = false
+
+        // Process next item
+        setTimeout(() => {
+          if (!this.isPaused) {
+            this.processNext()
+          }
+        }, 1000)
+      }
+    })
+  }
+
+  private emitUpdate(): void {
+    this.saveQueue()  // Persist on every change
+    this.emit('update', this.getStatus())
+  }
+
+  getStatus(): QueueStatus {
+    return {
+      items: [...this.items],
+      isProcessing: this.isProcessing,
+      isPaused: this.isPaused,
+      currentItemId: this.currentItemId,
+    }
+  }
+
+  addItem(item: Omit<QueueItem, 'id' | 'status' | 'addedAt'>): { id: string; position: number } {
+    const id = `queue-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`
+    const newItem: QueueItem = {
+      ...item,
+      id,
+      status: 'pending',
+      addedAt: Date.now(),
+    }
+
+    this.items.push(newItem)
+    this.emitUpdate()
+
+    // Start processing if not already
+    if (!this.isProcessing && !this.isPaused) {
+      this.processNext()
+    }
+
+    return { id, position: this.items.length }
+  }
+
+  removeItem(id: string): boolean {
+    const index = this.items.findIndex(i => i.id === id)
+    if (index === -1) return false
+
+    const item = this.items[index]
+
+    // If this is the currently downloading item, cancel it
+    if (item.status === 'downloading' && this.currentItemId === id) {
+      this.downloader.cancel()
+      this.currentItemId = null
+      this.isProcessing = false
+    }
+
+    this.items.splice(index, 1)
+    this.emitUpdate()
+
+    // If we cancelled the current item, process next
+    if (!this.isProcessing && !this.isPaused) {
+      this.processNext()
+    }
+
+    return true
+  }
+
+  cancelItem(id: string): boolean {
+    const item = this.items.find(i => i.id === id)
+    if (!item) return false
+
+    if (item.status === 'downloading' && this.currentItemId === id) {
+      this.downloader.cancel()
+      item.status = 'cancelled'
+      this.currentItemId = null
+      this.isProcessing = false
+      this.emitUpdate()
+
+      // Process next item
+      if (!this.isPaused) {
+        setTimeout(() => this.processNext(), 500)
+      }
+    } else if (item.status === 'pending') {
+      item.status = 'cancelled'
+      this.emitUpdate()
+    }
+
+    return true
+  }
+
+  async processNext(): Promise<void> {
+    if (this.isProcessing || this.isPaused) return
+
+    // First check for paused items (resume them), then pending items
+    const nextItem = this.items.find(i => i.status === 'pending')
+    if (!nextItem) return
+
+    this.isProcessing = true
+    this.currentItemId = nextItem.id
+    nextItem.status = 'downloading'
+    logger.info('Starting download', `${nextItem.title} (${nextItem.id})`)
+    this.emitUpdate()
+
+    try {
+      await this.downloader.download({
+        url: nextItem.url,
+        format: nextItem.format,
+        audioOnly: nextItem.audioOnly,
+        outputPath: this.downloadPath,
+        organizeByType: this.settings.organizeByType ?? true,
+        delayBetweenDownloads: this.settings.delayBetweenDownloads ?? 2000,
+      })
+    } catch (error) {
+      // Error handling is done in the downloader listener
+      logger.error('Queue download error', error instanceof Error ? error : String(error))
+    }
+  }
+
+  pause(): void {
+    this.isPaused = true
+    // If currently downloading, cancel the download (yt-dlp will leave .part file for resume)
+    if (this.currentItemId) {
+      const item = this.items.find(i => i.id === this.currentItemId)
+      if (item && item.status === 'downloading') {
+        logger.info('Pausing download', item.title)
+        item.status = 'paused'
+        this.downloader.cancel()  // Leaves .part file intact for resume
+      }
+      this.currentItemId = null
+      this.isProcessing = false
+    }
+    this.emitUpdate()
+  }
+
+  resume(): void {
+    this.isPaused = false
+    // Find paused item and set back to pending
+    const pausedItem = this.items.find(i => i.status === 'paused')
+    if (pausedItem) {
+      logger.info('Resuming download', pausedItem.title)
+      pausedItem.status = 'pending'
+      pausedItem.progress = undefined  // Clear old progress
+    }
+    this.emitUpdate()
+
+    if (!this.isProcessing) {
+      this.processNext()
+    }
+  }
+
+  clear(): void {
+    // Cancel current download if any
+    if (this.currentItemId) {
+      this.downloader.cancel()
+      this.currentItemId = null
+      this.isProcessing = false
+    }
+
+    // Remove all items
+    this.items = []
+    this.emitUpdate()
+  }
+
+  getDownloader(): Downloader {
+    return this.downloader
+  }
+}

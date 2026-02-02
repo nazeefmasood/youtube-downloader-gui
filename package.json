@@ -80,16 +80,44 @@
     ],
     "win": {
       "target": ["nsis"],
-      "icon": "resources/icon.ico"
+      "icon": "resources/icon.ico",
+      "publisherName": "VidGrab"
+    },
+    "nsis": {
+      "oneClick": false,
+      "allowToChangeInstallationDirectory": true,
+      "createDesktopShortcut": true,
+      "createStartMenuShortcut": true,
+      "shortcutName": "VidGrab",
+      "uninstallDisplayName": "VidGrab",
+      "installerIcon": "resources/icon.ico",
+      "uninstallerIcon": "resources/icon.ico",
+      "installerHeaderIcon": "resources/icon.ico",
+      "deleteAppDataOnUninstall": false
     },
     "mac": {
-      "target": ["zip"],
-      "icon": "resources/icon.png"
+      "target": ["dmg", "zip"],
+      "icon": "resources/icon.icns",
+      "category": "public.app-category.utilities"
+    },
+    "dmg": {
+      "title": "VidGrab Installer",
+      "icon": "resources/icon.icns"
     },
     "linux": {
-      "target": ["deb"],
+      "target": ["AppImage", "deb"],
       "icon": "resources/icon.png",
-      "category": "AudioVideo"
+      "category": "AudioVideo",
+      "synopsis": "YouTube Video Downloader",
+      "description": "Fast & beautiful YouTube video downloader - Download videos, playlists, and channels with ease. Powered by yt-dlp.",
+      "desktop": {
+        "Name": "VidGrab",
+        "Comment": "YouTube Video Downloader",
+        "Categories": "AudioVideo;Video;Network"
+      }
+    },
+    "deb": {
+      "depends": ["libgtk-3-0", "libnotify4", "libnss3", "libxss1", "libxtst6", "xdg-utils", "libatspi2.0-0", "libuuid1"]
     }
   }
 }
