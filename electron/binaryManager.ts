@@ -4,7 +4,7 @@ import * as https from 'https'
 import { app, BrowserWindow } from 'electron'
 import { logger } from './logger'
 
-const YTDLP_VERSION = '2024.12.23'
+const YTDLP_VERSION = '2026.01.31'
 
 interface BinaryInfo {
   name: string

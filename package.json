@@ -7,7 +7,7 @@
     "dev": "vite",
     "build": "tsc && vite build && tsc -p tsconfig.electron.json",
     "preview": "vite preview",
-    "electron:dev": "concurrently \"vite\" \"tsc -p tsconfig.electron.json -w\" \"electron .\"",
+    "electron:dev": "concurrently \"vite\" \"tsc -p tsconfig.electron.json -w\" \"sleep 5 && electron . --dev --no-sandbox --ozone-platform=x11\"",
     "electron:build": "npm run build && electron-builder",
     "build:win": "npm run build && electron-builder --win",
     "build:mac": "npm run build && electron-builder --mac",

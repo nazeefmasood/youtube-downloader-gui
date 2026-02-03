@@ -4,6 +4,7 @@ import * as fs from 'fs'
 import { EventEmitter } from 'events'
 import { app } from 'electron'
 import { logger } from './logger'
+import { binaryManager } from './binaryManager'
 
 interface ContentInfo {
   type: 'video' | 'playlist' | 'channel'
@@ -113,23 +114,7 @@ export class Downloader extends EventEmitter {
   }
 
   private getYtdlpPath(): string {
-    const platform = process.platform
-    const isDev = process.env.NODE_ENV === 'development' || !app.isPackaged
-
-    let binaryName: string
-    if (platform === 'win32') {
-      binaryName = 'yt-dlp.exe'
-    } else if (platform === 'darwin') {
-      binaryName = 'yt-dlp-macos'
-    } else {
-      binaryName = 'yt-dlp-linux'
-    }
-
-    if (isDev) {
-      return path.join(process.cwd(), 'binaries', binaryName)
-    } else {
-      return path.join(process.resourcesPath, 'binaries', binaryName)
-    }
+    return binaryManager.getBinaryPath()
   }
 
   private getFfmpegPath(): string {
@@ -146,6 +131,7 @@ export class Downloader extends EventEmitter {
 
   private runYtdlp(args: string[], isDetection = false): Promise<string> {
     return new Promise((resolve, reject) => {
+      logger.info('Spawning yt-dlp', `Path: ${this.ytdlpPath}\nArgs: ${args.join(' ')}\nPATH: ${process.env.PATH}`)
       const ytdlp = spawn(this.ytdlpPath, args)
 
       // Track detection process for cancellation
@@ -161,7 +147,12 @@ export class Downloader extends EventEmitter {
       })
 
       ytdlp.stderr.on('data', (data) => {
-        stderr += data.toString()
+        const stderrChunk = data.toString()
+        stderr += stderrChunk
+        // Log warnings and errors from yt-dlp
+        if (stderrChunk.includes('WARNING') || stderrChunk.includes('ERROR')) {
+          logger.info('yt-dlp stderr', stderrChunk.trim())
+        }
       })
 
       ytdlp.on('close', (code) => {
@@ -169,6 +160,10 @@ export class Downloader extends EventEmitter {
           this.detectionProcess = null
         }
         if (code === 0) {
+          // Log any warnings even on success
+          if (stderr) {
+            logger.info('yt-dlp completed with warnings', stderr.trim())
+          }
           resolve(stdout)
         } else {
           reject(new Error(stderr || `yt-dlp exited with code ${code}`))
@@ -201,6 +196,8 @@ export class Downloader extends EventEmitter {
       '--dump-json',
       '--flat-playlist',
       '--no-warnings',
+      '--extractor-args', 'youtube:player_client=android',
+      '--user-agent', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
       url,
     ]
 
@@ -261,6 +258,8 @@ export class Downloader extends EventEmitter {
       '--dump-json',
       '--no-playlist',
       '--no-warnings',
+      '--extractor-args', 'youtube:player_client=android',
+      '--user-agent', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
       url,
     ]
 
@@ -354,6 +353,8 @@ export class Downloader extends EventEmitter {
       '--no-warnings',
       '--newline',
       '--progress',
+      '--extractor-args', 'youtube:player_client=android',
+      '--user-agent', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
       '--ffmpeg-location', this.ffmpegPath,
     ]
 

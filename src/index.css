@@ -7,8 +7,8 @@
 @font-face {
   font-family: 'Space Grotesk';
   src: url('/fonts/SpaceGrotesk-Light.woff2') format('woff2'),
-       url('/fonts/SpaceGrotesk-Light.woff') format('woff'),
-       url('/fonts/SpaceGrotesk-Light.ttf') format('truetype');
+    url('/fonts/SpaceGrotesk-Light.woff') format('woff'),
+    url('/fonts/SpaceGrotesk-Light.ttf') format('truetype');
   font-weight: 300;
   font-style: normal;
   font-display: swap;
@@ -17,8 +17,8 @@
 @font-face {
   font-family: 'Space Grotesk';
   src: url('/fonts/SpaceGrotesk-Regular.woff2') format('woff2'),
-       url('/fonts/SpaceGrotesk-Regular.woff') format('woff'),
-       url('/fonts/SpaceGrotesk-Regular.ttf') format('truetype');
+    url('/fonts/SpaceGrotesk-Regular.woff') format('woff'),
+    url('/fonts/SpaceGrotesk-Regular.ttf') format('truetype');
   font-weight: 400;
   font-style: normal;
   font-display: swap;
@@ -27,8 +27,8 @@
 @font-face {
   font-family: 'Space Grotesk';
   src: url('/fonts/SpaceGrotesk-Medium.woff2') format('woff2'),
-       url('/fonts/SpaceGrotesk-Medium.woff') format('woff'),
-       url('/fonts/SpaceGrotesk-Medium.ttf') format('truetype');
+    url('/fonts/SpaceGrotesk-Medium.woff') format('woff'),
+    url('/fonts/SpaceGrotesk-Medium.ttf') format('truetype');
   font-weight: 500;
   font-style: normal;
   font-display: swap;
@@ -37,8 +37,8 @@
 @font-face {
   font-family: 'Space Grotesk';
   src: url('/fonts/SpaceGrotesk-SemiBold.woff2') format('woff2'),
-       url('/fonts/SpaceGrotesk-SemiBold.woff') format('woff'),
-       url('/fonts/SpaceGrotesk-SemiBold.ttf') format('truetype');
+    url('/fonts/SpaceGrotesk-SemiBold.woff') format('woff'),
+    url('/fonts/SpaceGrotesk-SemiBold.ttf') format('truetype');
   font-weight: 600;
   font-style: normal;
   font-display: swap;
@@ -47,8 +47,8 @@
 @font-face {
   font-family: 'Space Grotesk';
   src: url('/fonts/SpaceGrotesk-Bold.woff2') format('woff2'),
-       url('/fonts/SpaceGrotesk-Bold.woff') format('woff'),
-       url('/fonts/SpaceGrotesk-Bold.ttf') format('truetype');
+    url('/fonts/SpaceGrotesk-Bold.woff') format('woff'),
+    url('/fonts/SpaceGrotesk-Bold.ttf') format('truetype');
   font-weight: 700;
   font-style: normal;
   font-display: swap;
@@ -112,7 +112,9 @@
   box-sizing: border-box;
 }
 
-html, body, #root {
+html,
+body,
+#root {
   height: 100%;
   background: var(--bg-primary);
   color: var(--text-primary);
@@ -187,13 +189,11 @@ html, body, #root {
   right: 0;
   bottom: 0;
   pointer-events: none;
-  background: repeating-linear-gradient(
-    0deg,
-    rgba(0, 0, 0, 0.03) 0px,
-    rgba(0, 0, 0, 0.03) 1px,
-    transparent 1px,
-    transparent 2px
-  );
+  background: repeating-linear-gradient(0deg,
+      rgba(0, 0, 0, 0.03) 0px,
+      rgba(0, 0, 0, 0.03) 1px,
+      transparent 1px,
+      transparent 2px);
   z-index: 9999;
 }
 
@@ -202,8 +202,13 @@ html, body, #root {
    ============================================ */
 
 @keyframes fadeIn {
-  from { opacity: 0; }
-  to { opacity: 1; }
+  from {
+    opacity: 0;
+  }
+
+  to {
+    opacity: 1;
+  }
 }
 
 @keyframes fadeInUp {
@@ -211,6 +216,7 @@ html, body, #root {
     opacity: 0;
     transform: translateY(20px);
   }
+
   to {
     opacity: 1;
     transform: translateY(0);
@@ -222,6 +228,7 @@ html, body, #root {
     opacity: 0;
     transform: translateY(-20px);
   }
+
   to {
     opacity: 1;
     transform: translateY(0);
@@ -233,6 +240,7 @@ html, body, #root {
     opacity: 0;
     transform: translateX(30px);
   }
+
   to {
     opacity: 1;
     transform: translateX(0);
@@ -244,6 +252,7 @@ html, body, #root {
     opacity: 0;
     transform: translateX(-30px);
   }
+
   to {
     opacity: 1;
     transform: translateX(0);
@@ -255,6 +264,7 @@ html, body, #root {
     opacity: 0;
     transform: scale(0.9);
   }
+
   to {
     opacity: 1;
     transform: scale(1);
@@ -262,32 +272,65 @@ html, body, #root {
 }
 
 @keyframes pulse {
-  0%, 100% { opacity: 1; }
-  50% { opacity: 0.3; }
+
+  0%,
+  100% {
+    opacity: 1;
+  }
+
+  50% {
+    opacity: 0.3;
+  }
 }
 
 @keyframes glow {
-  0%, 100% { box-shadow: 0 0 5px var(--accent-glow); }
-  50% { box-shadow: 0 0 20px var(--accent-glow), 0 0 30px var(--accent-glow); }
+
+  0%,
+  100% {
+    box-shadow: 0 0 5px var(--accent-glow);
+  }
+
+  50% {
+    box-shadow: 0 0 20px var(--accent-glow), 0 0 30px var(--accent-glow);
+  }
 }
 
 @keyframes shimmer {
-  0% { background-position: -200% 0; }
-  100% { background-position: 200% 0; }
+  0% {
+    background-position: -200% 0;
+  }
+
+  100% {
+    background-position: 200% 0;
+  }
 }
 
 @keyframes spin {
-  to { transform: rotate(360deg); }
+  to {
+    transform: rotate(360deg);
+  }
 }
 
 @keyframes blink {
-  0%, 100% { opacity: 1; }
-  50% { opacity: 0; }
+
+  0%,
+  100% {
+    opacity: 1;
+  }
+
+  50% {
+    opacity: 0;
+  }
 }
 
 @keyframes progressStripes {
-  0% { background-position: 0 0; }
-  100% { background-position: 40px 0; }
+  0% {
+    background-position: 0 0;
+  }
+
+  100% {
+    background-position: 40px 0;
+  }
 }
 
 @keyframes successPop {
@@ -295,9 +338,11 @@ html, body, #root {
     opacity: 0;
     transform: scale(0.5);
   }
+
   50% {
     transform: scale(1.1);
   }
+
   100% {
     opacity: 1;
     transform: scale(1);
@@ -308,6 +353,7 @@ html, body, #root {
   0% {
     stroke-dashoffset: 100;
   }
+
   100% {
     stroke-dashoffset: 0;
   }
@@ -318,6 +364,7 @@ html, body, #root {
     transform: scale(0);
     opacity: 0.5;
   }
+
   100% {
     transform: scale(4);
     opacity: 0;
@@ -329,6 +376,7 @@ html, body, #root {
     transform: translateY(0) rotate(0deg);
     opacity: 1;
   }
+
   100% {
     transform: translateY(-100px) rotate(720deg);
     opacity: 0;
@@ -336,9 +384,12 @@ html, body, #root {
 }
 
 @keyframes successGlow {
-  0%, 100% {
+
+  0%,
+  100% {
     box-shadow: 0 0 20px var(--accent-glow), 0 0 40px var(--accent-glow);
   }
+
   50% {
     box-shadow: 0 0 40px var(--accent-glow), 0 0 80px var(--accent-glow), 0 0 120px var(--accent-glow);
   }
@@ -349,6 +400,7 @@ html, body, #root {
     opacity: 0;
     transform: translateY(30px);
   }
+
   to {
     opacity: 1;
     transform: translateY(0);
@@ -360,12 +412,15 @@ html, body, #root {
     opacity: 0;
     transform: scale(0.3);
   }
+
   50% {
     transform: scale(1.05);
   }
+
   70% {
     transform: scale(0.9);
   }
+
   100% {
     opacity: 1;
     transform: scale(1);
@@ -373,18 +428,24 @@ html, body, #root {
 }
 
 @keyframes float {
-  0%, 100% {
+
+  0%,
+  100% {
     transform: translateY(0);
   }
+
   50% {
     transform: translateY(-10px);
   }
 }
 
 @keyframes progressPulse {
-  0%, 100% {
+
+  0%,
+  100% {
     opacity: 1;
   }
+
   50% {
     opacity: 0.7;
   }
@@ -394,22 +455,44 @@ html, body, #root {
   0% {
     transform: scale(1);
   }
+
   50% {
     transform: scale(1.05);
   }
+
   100% {
     transform: scale(1);
   }
 }
 
 /* Animation utility classes */
-.animate-fade-in { animation: fadeIn 0.3s ease-out; }
-.animate-fade-in-up { animation: fadeInUp 0.4s ease-out; }
-.animate-fade-in-down { animation: fadeInDown 0.4s ease-out; }
-.animate-slide-in-right { animation: slideInRight 0.4s ease-out; }
-.animate-slide-in-left { animation: slideInLeft 0.4s ease-out; }
-.animate-scale-in { animation: scaleIn 0.3s ease-out; }
-.blink { animation: blink 1s step-end infinite; }
+.animate-fade-in {
+  animation: fadeIn 0.3s ease-out;
+}
+
+.animate-fade-in-up {
+  animation: fadeInUp 0.4s ease-out;
+}
+
+.animate-fade-in-down {
+  animation: fadeInDown 0.4s ease-out;
+}
+
+.animate-slide-in-right {
+  animation: slideInRight 0.4s ease-out;
+}
+
+.animate-slide-in-left {
+  animation: slideInLeft 0.4s ease-out;
+}
+
+.animate-scale-in {
+  animation: scaleIn 0.3s ease-out;
+}
+
+.blink {
+  animation: blink 1s step-end infinite;
+}
 
 /* ============================================
    TITLE BAR
@@ -733,7 +816,7 @@ html, body, #root {
   padding-bottom: 70px;
 }
 
-.main-content > * {
+.main-content>* {
   align-self: stretch;
 }
 
@@ -851,7 +934,9 @@ html, body, #root {
 }
 
 @keyframes lineExpand {
-  to { transform: scaleX(1); }
+  to {
+    transform: scaleX(1);
+  }
 }
 
 .content-header {
@@ -938,7 +1023,7 @@ html, body, #root {
   left: -100%;
   width: 100%;
   height: 100%;
-  background: linear-gradient(90deg, transparent, rgba(255,255,255,0.3), transparent);
+  background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.3), transparent);
   animation: shimmer 2s ease-in-out infinite;
 }
 
@@ -1034,11 +1119,25 @@ html, body, #root {
   animation-fill-mode: both;
 }
 
-.video-list-item:nth-child(1) { animation-delay: 0.05s; }
-.video-list-item:nth-child(2) { animation-delay: 0.1s; }
-.video-list-item:nth-child(3) { animation-delay: 0.15s; }
-.video-list-item:nth-child(4) { animation-delay: 0.2s; }
-.video-list-item:nth-child(5) { animation-delay: 0.25s; }
+.video-list-item:nth-child(1) {
+  animation-delay: 0.05s;
+}
+
+.video-list-item:nth-child(2) {
+  animation-delay: 0.1s;
+}
+
+.video-list-item:nth-child(3) {
+  animation-delay: 0.15s;
+}
+
+.video-list-item:nth-child(4) {
+  animation-delay: 0.2s;
+}
+
+.video-list-item:nth-child(5) {
+  animation-delay: 0.25s;
+}
 
 .video-list-item:hover {
   background: var(--bg-tertiary);
@@ -1209,13 +1308,11 @@ html, body, #root {
   left: 0;
   right: 0;
   bottom: 0;
-  background: repeating-linear-gradient(
-    90deg,
-    var(--border) 0px,
-    var(--border) 1px,
-    transparent 1px,
-    transparent 8px
-  );
+  background: repeating-linear-gradient(90deg,
+      var(--border) 0px,
+      var(--border) 1px,
+      transparent 1px,
+      transparent 8px);
   opacity: 0.3;
 }
 
@@ -1234,13 +1331,11 @@ html, body, #root {
   left: 0;
   right: 0;
   bottom: 0;
-  background: repeating-linear-gradient(
-    -45deg,
-    transparent 0px,
-    transparent 4px,
-    rgba(0, 0, 0, 0.15) 4px,
-    rgba(0, 0, 0, 0.15) 8px
-  );
+  background: repeating-linear-gradient(-45deg,
+      transparent 0px,
+      transparent 4px,
+      rgba(0, 0, 0, 0.15) 4px,
+      rgba(0, 0, 0, 0.15) 8px);
   animation: progressStripes 0.5s linear infinite;
 }
 
@@ -1278,22 +1373,25 @@ html, body, #root {
 /* Initializing state - pulsing bar */
 .progress-fill-init {
   width: 100% !important;
-  background: linear-gradient(
-    90deg,
-    transparent 0%,
-    var(--accent-glow) 25%,
-    var(--accent) 50%,
-    var(--accent-glow) 75%,
-    transparent 100%
-  );
+  background: linear-gradient(90deg,
+      transparent 0%,
+      var(--accent-glow) 25%,
+      var(--accent) 50%,
+      var(--accent-glow) 75%,
+      transparent 100%);
   background-size: 200% 100%;
   animation: initPulse 1.5s ease-in-out infinite;
   opacity: 0.5;
 }
 
 @keyframes initPulse {
-  0% { background-position: 200% 0; }
-  100% { background-position: -200% 0; }
+  0% {
+    background-position: 200% 0;
+  }
+
+  100% {
+    background-position: -200% 0;
+  }
 }
 
 /* ============================================
@@ -1327,20 +1425,54 @@ html, body, #root {
   animation: confettiFloat 2.5s ease-out forwards;
 }
 
-.success-confetti:nth-child(1) { left: 5%; top: 50%; animation-delay: 0s; background: var(--accent); }
-.success-confetti:nth-child(2) { left: 20%; top: 60%; animation-delay: 0.1s; background: var(--warning); transform: rotate(45deg); }
-.success-confetti:nth-child(3) { right: 10%; top: 45%; animation-delay: 0.2s; background: var(--accent); }
-.success-confetti:nth-child(4) { right: 25%; top: 55%; animation-delay: 0.15s; background: #ff6b6b; transform: rotate(30deg); }
-.success-confetti:nth-child(5) { left: 40%; top: 70%; animation-delay: 0.25s; background: var(--accent-dim); transform: rotate(-20deg); }
+.success-confetti:nth-child(1) {
+  left: 5%;
+  top: 50%;
+  animation-delay: 0s;
+  background: var(--accent);
+}
+
+.success-confetti:nth-child(2) {
+  left: 20%;
+  top: 60%;
+  animation-delay: 0.1s;
+  background: var(--warning);
+  transform: rotate(45deg);
+}
+
+.success-confetti:nth-child(3) {
+  right: 10%;
+  top: 45%;
+  animation-delay: 0.2s;
+  background: var(--accent);
+}
+
+.success-confetti:nth-child(4) {
+  right: 25%;
+  top: 55%;
+  animation-delay: 0.15s;
+  background: #ff6b6b;
+  transform: rotate(30deg);
+}
+
+.success-confetti:nth-child(5) {
+  left: 40%;
+  top: 70%;
+  animation-delay: 0.25s;
+  background: var(--accent-dim);
+  transform: rotate(-20deg);
+}
 
 @keyframes confettiFloat {
   0% {
     opacity: 1;
     transform: translateY(0) rotate(0deg) scale(1);
   }
+
   50% {
     opacity: 1;
   }
+
   100% {
     opacity: 0;
     transform: translateY(-200px) rotate(720deg) scale(0.3);
@@ -1445,7 +1577,7 @@ html, body, #root {
   left: -100%;
   width: 100%;
   height: 100%;
-  background: linear-gradient(90deg, transparent, rgba(255,255,255,0.2), transparent);
+  background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.2), transparent);
   transition: left 0.5s ease;
 }
 
@@ -1765,12 +1897,10 @@ html, body, #root {
   left: -100%;
   width: 100%;
   height: 100%;
-  background: linear-gradient(
-    90deg,
-    transparent,
-    rgba(255, 255, 255, 0.3),
-    transparent
-  );
+  background: linear-gradient(90deg,
+      transparent,
+      rgba(255, 255, 255, 0.3),
+      transparent);
   transition: left 0.5s ease;
 }
 
@@ -1837,12 +1967,31 @@ html, body, #root {
 }
 
 @keyframes shakeIn {
-  0% { opacity: 0; transform: translateX(-20px); }
-  20% { transform: translateX(10px); }
-  40% { transform: translateX(-10px); }
-  60% { transform: translateX(5px); }
-  80% { transform: translateX(-5px); }
-  100% { opacity: 1; transform: translateX(0); }
+  0% {
+    opacity: 0;
+    transform: translateX(-20px);
+  }
+
+  20% {
+    transform: translateX(10px);
+  }
+
+  40% {
+    transform: translateX(-10px);
+  }
+
+  60% {
+    transform: translateX(5px);
+  }
+
+  80% {
+    transform: translateX(-5px);
+  }
+
+  100% {
+    opacity: 1;
+    transform: translateX(0);
+  }
 }
 
 .error-header {
@@ -2156,7 +2305,7 @@ html, body, #root {
   padding: 0 16px;
   background: var(--bg-tertiary);
   border-top: 1px solid var(--border);
-  font-size: 10px;
+  font-size: 8px;
   color: var(--text-muted);
   transition: background-color 0.3s ease, border-color 0.3s ease;
 }
@@ -2185,8 +2334,17 @@ html, body, #root {
 }
 
 @keyframes statusRing {
-  0%, 100% { opacity: 0; transform: scale(0.8); }
-  50% { opacity: 0.5; transform: scale(1.2); }
+
+  0%,
+  100% {
+    opacity: 0;
+    transform: scale(0.8);
+  }
+
+  50% {
+    opacity: 0.5;
+    transform: scale(1.2);
+  }
 }
 
 .status-indicator.error {
@@ -2781,12 +2939,10 @@ html, body, #root {
   left: -100%;
   width: 100%;
   height: 100%;
-  background: linear-gradient(
-    90deg,
-    transparent,
-    rgba(255, 255, 255, 0.3),
-    transparent
-  );
+  background: linear-gradient(90deg,
+      transparent,
+      rgba(255, 255, 255, 0.3),
+      transparent);
   transition: left 0.5s ease;
 }
 
@@ -2971,6 +3127,7 @@ html, body, #root {
     opacity: 0;
     background: radial-gradient(ellipse at center, rgba(0, 255, 136, 0.4) 0%, transparent 50%);
   }
+
   100% {
     opacity: 1;
     background: radial-gradient(ellipse at center, rgba(0, 255, 136, 0.1) 0%, transparent 70%);
@@ -3007,6 +3164,7 @@ html, body, #root {
     transform: translateY(0);
     opacity: 1;
   }
+
   100% {
     transform: translateY(100vh);
     opacity: 0;
@@ -3032,9 +3190,11 @@ html, body, #root {
     transform: translate(-50%, -50%) scale(0);
     opacity: 0;
   }
+
   50% {
     transform: translate(-50%, -50%) scale(1.1);
   }
+
   100% {
     transform: translate(-50%, -50%) scale(1);
     opacity: 1;
@@ -3072,6 +3232,7 @@ html, body, #root {
     opacity: 0;
     transform: scale(0.9) translateY(20px);
   }
+
   to {
     opacity: 1;
     transform: scale(1) translateY(0);
@@ -3085,9 +3246,12 @@ html, body, #root {
 }
 
 @keyframes pulse {
-  0%, 100% {
+
+  0%,
+  100% {
     opacity: 1;
   }
+
   50% {
     opacity: 0.5;
   }
