@@ -64,7 +64,7 @@
     ],
     "extraResources": [
       {
-        "from": "binaries/",
+        "from": "binaries",
         "to": "binaries/",
         "filter": [
           "**/*"

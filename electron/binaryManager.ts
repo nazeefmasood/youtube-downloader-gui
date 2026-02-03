@@ -13,16 +13,24 @@ interface BinaryInfo {
   executable: boolean
 }
 
+// ... (imports remain the same)
+
 export class BinaryManager {
-  private binariesPath: string
+  private bundledPath: string
+  private userDataPath: string
 
   constructor() {
     const isDev = process.env.NODE_ENV === 'development' || !app.isPackaged
+
+    // Bundled path (read-only in production)
     if (isDev) {
-      this.binariesPath = path.join(process.cwd(), 'binaries')
+      this.bundledPath = path.join(process.cwd(), 'binaries')
     } else {
-      this.binariesPath = path.join(process.resourcesPath, 'binaries')
+      this.bundledPath = path.join(process.resourcesPath, 'binaries')
     }
+
+    // User data path (writable)
+    this.userDataPath = path.join(app.getPath('userData'), 'binaries')
   }
 
   private getBinaryInfo(): BinaryInfo {
@@ -41,18 +49,29 @@ export class BinaryManager {
       url = `https://github.com/yt-dlp/yt-dlp/releases/download/${YTDLP_VERSION}/yt-dlp_linux`
     }
 
+    // effectivePath will be determined by what exists, but default to userData for new downloads
     return {
       name: binaryName,
       url,
-      path: path.join(this.binariesPath, binaryName),
+      path: path.join(this.userDataPath, binaryName), // Default download target
       executable: platform !== 'win32',
     }
   }
 
   isBinaryInstalled(): boolean {
     const binary = this.getBinaryInfo()
-    const exists = fs.existsSync(binary.path)
-    logger.info('Binary check', `${binary.name}: ${exists ? 'found' : 'not found'} at ${binary.path}`)
+
+    // Check bundled path first
+    const bundledPath = path.join(this.bundledPath, binary.name)
+    if (fs.existsSync(bundledPath)) {
+      logger.info('Binary check', `Found bundled binary at ${bundledPath}`)
+      return true
+    }
+
+    // Check user data path
+    const userDataPath = path.join(this.userDataPath, binary.name)
+    const exists = fs.existsSync(userDataPath)
+    logger.info('Binary check', `${binary.name}: ${exists ? 'found' : 'not found'} at ${userDataPath}`)
     return exists
   }
 
@@ -61,106 +80,124 @@ export class BinaryManager {
 
     logger.info('Starting binary download', binary.url)
 
-    // Ensure binaries directory exists
-    if (!fs.existsSync(this.binariesPath)) {
-      fs.mkdirSync(this.binariesPath, { recursive: true })
-    }
+    try {
+      // Ensure binaries directory exists in userData
+      if (!fs.existsSync(this.userDataPath)) {
+        fs.mkdirSync(this.userDataPath, { recursive: true })
+      }
 
-    // Notify UI that download is starting
-    mainWindow?.webContents.send('binary:download-start', {
-      name: binary.name,
-    })
+      // Notify UI that download is starting
+      mainWindow?.webContents.send('binary:download-start', {
+        name: binary.name,
+      })
 
-    return new Promise((resolve) => {
-      const downloadFile = (url: string, redirectCount = 0): void => {
-        if (redirectCount > 5) {
-          logger.error('Binary download failed', 'Too many redirects')
-          mainWindow?.webContents.send('binary:download-error', {
-            error: 'Too many redirects',
-          })
-          resolve(false)
-          return
-        }
-
-        https.get(url, (response) => {
-          // Handle redirects
-          if (response.statusCode === 301 || response.statusCode === 302) {
-            const redirectUrl = response.headers.location
-            if (redirectUrl) {
-              logger.info('Following redirect', redirectUrl)
-              downloadFile(redirectUrl, redirectCount + 1)
-              return
-            }
-          }
-
-          if (response.statusCode !== 200) {
-            logger.error('Binary download failed', `HTTP ${response.statusCode}`)
-            mainWindow?.webContents.send('binary:download-error', {
-              error: `HTTP error: ${response.statusCode}`,
-            })
+      return new Promise((resolve) => {
+        const downloadFile = (url: string, redirectCount = 0): void => {
+          if (redirectCount > 5) {
+            const error = 'Too many redirects'
+            logger.error('Binary download failed', error)
+            mainWindow?.webContents.send('binary:download-error', { error })
             resolve(false)
             return
           }
 
-          const totalSize = parseInt(response.headers['content-length'] || '0', 10)
-          let downloadedSize = 0
-
-          const file = fs.createWriteStream(binary.path)
-
-          response.on('data', (chunk: Buffer) => {
-            downloadedSize += chunk.length
-            const percent = totalSize > 0 ? Math.round((downloadedSize / totalSize) * 100) : 0
-            mainWindow?.webContents.send('binary:download-progress', {
-              percent,
-              downloaded: downloadedSize,
-              total: totalSize,
-            })
-          })
-
-          response.pipe(file)
-
-          file.on('finish', () => {
-            file.close()
-
-            // Make executable on Unix systems
-            if (binary.executable) {
-              try {
-                fs.chmodSync(binary.path, 0o755)
-              } catch (err) {
-                logger.error('Failed to make binary executable', err instanceof Error ? err : String(err))
+          https.get(url, (response) => {
+            // Handle redirects
+            if (response.statusCode === 301 || response.statusCode === 302) {
+              const redirectUrl = response.headers.location
+              if (redirectUrl) {
+                logger.info('Following redirect', redirectUrl)
+                downloadFile(redirectUrl, redirectCount + 1)
+                return
               }
             }
 
-            logger.info('Binary download complete', binary.path)
-            mainWindow?.webContents.send('binary:download-complete', {
-              path: binary.path,
-            })
-            resolve(true)
-          })
+            if (response.statusCode !== 200) {
+              const error = `HTTP error: ${response.statusCode}`
+              logger.error('Binary download failed', error)
+              mainWindow?.webContents.send('binary:download-error', { error })
+              resolve(false)
+              return
+            }
 
-          file.on('error', (err) => {
-            fs.unlinkSync(binary.path)
+            const totalSize = parseInt(response.headers['content-length'] || '0', 10)
+            let downloadedSize = 0
+
+            // Always download to userDataPath (writable)
+            const targetPath = path.join(this.userDataPath, binary.name)
+            const file = fs.createWriteStream(targetPath)
+
+            response.on('data', (chunk: Buffer) => {
+              downloadedSize += chunk.length
+              const percent = totalSize > 0 ? Math.round((downloadedSize / totalSize) * 100) : 0
+              mainWindow?.webContents.send('binary:download-progress', {
+                percent,
+                downloaded: downloadedSize,
+                total: totalSize,
+              })
+            })
+
+            response.pipe(file)
+
+            file.on('finish', () => {
+              file.close()
+
+              // Make executable on Unix systems
+              if (binary.executable) {
+                try {
+                  fs.chmodSync(targetPath, 0o755)
+                } catch (err) {
+                  logger.error('Failed to make binary executable', err instanceof Error ? err : String(err))
+                }
+              }
+
+              logger.info('Binary download complete', targetPath)
+              mainWindow?.webContents.send('binary:download-complete', {
+                path: targetPath,
+              })
+              resolve(true)
+            })
+
+            file.on('error', (err) => {
+              try {
+                fs.unlinkSync(targetPath)
+              } catch (e) { /* ignore */ }
+
+              const error = err.message
+              logger.error('Binary download failed', error)
+              mainWindow?.webContents.send('binary:download-error', { error })
+              resolve(false)
+            })
+          }).on('error', (err) => {
             logger.error('Binary download failed', err)
             mainWindow?.webContents.send('binary:download-error', {
               error: err.message,
             })
             resolve(false)
           })
-        }).on('error', (err) => {
-          logger.error('Binary download failed', err)
-          mainWindow?.webContents.send('binary:download-error', {
-            error: err.message,
-          })
-          resolve(false)
-        })
-      }
+        }
 
-      downloadFile(binary.url)
-    })
+        downloadFile(binary.url)
+      })
+    } catch (err) {
+      const error = err instanceof Error ? err.message : String(err)
+      logger.error('Binary download setup failed', error)
+      mainWindow?.webContents.send('binary:download-error', { error })
+      return false
+    }
   }
 
   getBinaryPath(): string {
-    return this.getBinaryInfo().path
+    const binary = this.getBinaryInfo()
+
+    // Check bundled path first
+    const bundledPath = path.join(this.bundledPath, binary.name)
+    if (fs.existsSync(bundledPath)) {
+      return bundledPath
+    }
+
+    // Default to userData path (whether it exists or not)
+    return path.join(this.userDataPath, binary.name)
   }
 }
 

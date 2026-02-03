@@ -7,7 +7,7 @@ dist-electron/
 release/
 
 # Binaries (download separately)
-binaries/yt-dlp*
+# binaries/yt-dlp*
 
 # IDE
 .vscode/
