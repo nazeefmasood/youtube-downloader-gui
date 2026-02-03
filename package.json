@@ -102,15 +102,14 @@
     },
     "mac": {
       "target": [
-        "dmg",
         "zip"
       ],
-      "icon": "resources/icon.icns",
+      "icon": "resources/icon.png",
       "category": "public.app-category.utilities"
     },
     "dmg": {
       "title": "VidGrab Installer",
-      "icon": "resources/icon.icns"
+      "icon": "resources/icon.png"
     },
     "linux": {
       "target": [
