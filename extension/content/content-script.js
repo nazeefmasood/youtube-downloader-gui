@@ -146,7 +146,7 @@ function createModal() {
       </div>
 
       <div class="vidgrab-modal-footer">
-        <span>VIDGRAB v1.0.0</span>
+        <span>VIDGRAB v1.1.0</span>
       </div>
     </div>
   `;

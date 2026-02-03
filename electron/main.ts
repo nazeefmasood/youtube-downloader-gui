@@ -181,18 +181,38 @@ app.whenReady().then(() => {
   })
 })
 
+// Cleanup function to close all resources
+function cleanup() {
+  if (httpServer) {
+    try {
+      httpServer.close()
+      httpServer = null
+      console.log('[INFO] HTTP server closed')
+    } catch (err) {
+      console.error('Error closing HTTP server:', err)
+    }
+  }
+  if (queueManager) {
+    queueManager.removeAllListeners()
+  }
+  if (downloader) {
+    downloader.removeAllListeners()
+  }
+}
+
 app.on('window-all-closed', () => {
+  cleanup()
   if (process.platform !== 'darwin') {
     app.quit()
   }
 })
 
 app.on('before-quit', () => {
-  // Close HTTP server
-  if (httpServer) {
-    httpServer.close()
-    httpServer = null
-  }
+  cleanup()
+})
+
+app.on('will-quit', () => {
+  cleanup()
 })
 
 // Window control IPC handlers

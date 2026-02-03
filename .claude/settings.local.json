@@ -26,7 +26,10 @@
       "Bash(npx --yes sharp-cli:*)",
       "Bash(npx:*)",
       "Bash(file:*)",
-      "Bash(python3:*)"
+      "Bash(python3:*)",
+      "Bash(pkill:*)",
+      "Bash(fuser:*)",
+      "Bash(kill:*)"
     ]
   }
 }
