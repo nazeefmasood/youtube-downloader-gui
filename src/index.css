@@ -137,13 +137,8 @@ body,
 }
 
 [data-font-size="medium"] {
-  font-size: 13px;
-  --base-font-size: 13px;
-}
-
-[data-font-size="large"] {
-  font-size: 15px !important;
-  --base-font-size: 15px;
+  font-size: 12px !important;
+  --base-font-size: 12px;
 }
 
 [data-font-size="large"] .title-bar,
@@ -155,12 +150,12 @@ body,
 [data-font-size="large"] .history-panel,
 [data-font-size="large"] .queue-section,
 [data-font-size="large"] .status-bar {
-  font-size: 15px;
+  font-size: 12px;
 }
 
 [data-font-size="x-large"] {
-  font-size: 17px !important;
-  --base-font-size: 17px;
+  font-size: 12px !important;
+  --base-font-size: 12px;
 }
 
 [data-font-size="x-large"] .title-bar,
@@ -172,7 +167,7 @@ body,
 [data-font-size="x-large"] .history-panel,
 [data-font-size="x-large"] .queue-section,
 [data-font-size="x-large"] .status-bar {
-  font-size: 17px;
+  font-size: 12px;
 }
 
 #root {
