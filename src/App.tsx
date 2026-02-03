@@ -59,6 +59,13 @@ function App() {
     }
   }, [])
 
+  // Apply font size setting
+  useEffect(() => {
+    if (settings.fontSize) {
+      document.documentElement.setAttribute('data-font-size', settings.fontSize)
+    }
+  }, [settings.fontSize])
+
   // Toggle theme
   const toggleTheme = useCallback(() => {
     const newTheme = theme === 'dark' ? 'light' : 'dark'
@@ -121,6 +128,15 @@ function App() {
     })
     return () => unsubscribe()
   }, [setQueueStatus])
+
+  // Subscribe to history updates (for queue items)
+  useEffect(() => {
+    const unsubscribe = window.electronAPI.onHistoryAdded(() => {
+      // Reload history to include the new item
+      loadHistory()
+    })
+    return () => unsubscribe()
+  }, [loadHistory])
 
   // Set up download event listeners
   useEffect(() => {
@@ -285,22 +301,24 @@ function App() {
 
   // Handle download all for playlists/channels
   const handleDownloadAll = useCallback(async () => {
-    if (!contentInfo) return
+    if (!contentInfo || !contentInfo.entries) return
 
     // Use selected format or default to best quality
     const formatToUse = selectedFormat || 'bestvideo+bestaudio/best'
     const formatObj = formats.find(f => f.formatId === formatToUse)
 
-    // Queue the main playlist/channel URL - yt-dlp handles it
-    await window.electronAPI.addToQueue({
-      url: urlInput,
-      title: contentInfo.title,
-      thumbnail: contentInfo.thumbnail,
-      format: formatToUse,
-      audioOnly: formatObj?.isAudioOnly || false,
-      source: 'app',
-    })
-  }, [contentInfo, selectedFormat, formats, urlInput])
+    // Add each video in playlist/channel as separate queue item
+    for (const entry of contentInfo.entries) {
+      await window.electronAPI.addToQueue({
+        url: `https://www.youtube.com/watch?v=${entry.id}`,
+        title: entry.title,
+        thumbnail: entry.thumbnail,
+        format: formatToUse,
+        audioOnly: formatObj?.isAudioOnly || false,
+        source: 'app',
+      })
+    }
+  }, [contentInfo, selectedFormat, formats])
 
   // Global keyboard shortcuts
   useEffect(() => {
@@ -671,14 +689,15 @@ function App() {
                 </div>
               )}
 
-              {/* Loading State */}
-              {isDetecting && (
-                <div className="empty-state">
+              {/* Analyzing State - Show in left panel */}
+              {isDetecting && !contentInfo && (
+                <div className="content-loading">
                   <div className="spinner" />
-                  <div className="empty-state-title">ANALYZING TARGET<span className="blink">_</span></div>
-                  <div className="empty-state-text">// Fetching metadata from remote source</div>
+                  <div className="loading-title">ANALYZING TARGET<span className="blink">_</span></div>
+                  <div className="loading-text">// Fetching metadata from remote source</div>
                 </div>
               )}
+
 
               {/* Content Loaded */}
               {contentInfo && !isDetecting && (
@@ -713,23 +732,6 @@ function App() {
                         </div>
                       </div>
                     </div>
-                    {/* Download All button for playlists/channels */}
-                    {(contentInfo.type === 'playlist' || contentInfo.type === 'channel') && !isActiveDownload && (
-                      <div className="content-actions">
-                        <button
-                          className="btn-download-all"
-                          onClick={handleDownloadAll}
-                          disabled={isLoadingFormats || isActiveDownload}
-                        >
-                          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                            <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
-                            <polyline points="7 10 12 15 17 10"/>
-                            <line x1="12" y1="15" x2="12" y2="3"/>
-                          </svg>
-                          {isLoadingFormats ? 'LOADING...' : `DOWNLOAD ALL (${contentInfo.videoCount || contentInfo.entries?.length || 0} VIDEOS)`}
-                        </button>
-                      </div>
-                    )}
                   </div>
 
                   {/* Error Display */}
@@ -819,28 +821,29 @@ function App() {
                       </div>
                     </div>
                     <div className="queue-controls">
-                      <button
-                        className={`btn-queue-control ${queueStatus.isPaused ? 'paused' : ''}`}
-                        onClick={handlePauseResumeQueue}
-                        disabled={activeQueueItems.length === 0}
-                      >
-                        {queueStatus.isPaused ? (
-                          <>
-                            <svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor">
-                              <polygon points="5 3 19 12 5 21 5 3"/>
-                            </svg>
-                            RESUME
-                          </>
-                        ) : (
-                          <>
-                            <svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor">
-                              <rect x="6" y="4" width="4" height="16"/>
-                              <rect x="14" y="4" width="4" height="16"/>
-                            </svg>
-                            PAUSE
-                          </>
-                        )}
-                      </button>
+                      {activeQueueItems.length > 0 && (
+                        <button
+                          className={`btn-queue-control ${queueStatus.isPaused ? 'paused' : ''}`}
+                          onClick={handlePauseResumeQueue}
+                        >
+                          {queueStatus.isPaused ? (
+                            <>
+                              <svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor">
+                                <polygon points="5 3 19 12 5 21 5 3"/>
+                              </svg>
+                              RESUME
+                            </>
+                          ) : (
+                            <>
+                              <svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor">
+                                <rect x="6" y="4" width="4" height="16"/>
+                                <rect x="14" y="4" width="4" height="16"/>
+                              </svg>
+                              PAUSE
+                            </>
+                          )}
+                        </button>
+                      )}
                       <button className="btn-clear" onClick={handleClearQueue}>CLEAR</button>
                     </div>
                   </div>
@@ -912,94 +915,116 @@ function App() {
               )}
             </div>
 
-            {/* Side Panel (Right) - Quality Selection */}
+            {/* Side Panel (Right) - Quality Selection - Only show when content is loaded */}
             {contentInfo && !showSuccess && (
               <div className="side-panel">
-                <div className="side-panel-content">
-                  <div className="panel-section">
-                    <div className="panel-header">
-                      <span className="panel-title">VIDEO QUALITY</span>
-                    </div>
-                    <div className="panel-content">
-                      {isLoadingFormats ? (
-                        <div className="loading-formats">
-                          <div className="spinner-small" />
-                          <span>LOADING FORMATS...</span>
+                {(
+                  <>
+                    <div className="side-panel-content">
+                      <div className="panel-section">
+                        <div className="panel-header">
+                          <span className="panel-title">VIDEO QUALITY</span>
                         </div>
-                      ) : (
-                        <div className="quality-list">
-                          {formats.filter(f => !f.isAudioOnly).map((format) => (
-                            <button
-                              key={format.formatId}
-                              className={`quality-option ${selectedFormat === format.formatId ? 'selected' : ''}`}
-                              onClick={() => setSelectedFormat(format.formatId)}
-                              disabled={isDownloading}
-                            >
-                              <div className="quality-info">
-                                <span className="quality-name">{format.quality}</span>
-                                <span className="quality-badge">{format.ext.toUpperCase()}</span>
-                              </div>
-                              {format.filesize && (
-                                <span className="quality-size">~{(format.filesize / 1024 / 1024).toFixed(0)} MB</span>
-                              )}
-                            </button>
-                          ))}
-                        </div>
-                      )}
-                    </div>
-                  </div>
-
-                  <div className="panel-section">
-                    <div className="panel-header">
-                      <span className="panel-title">AUDIO ONLY</span>
-                    </div>
-                    <div className="panel-content">
-                      <div className="quality-list">
-                        {formats.filter(f => f.isAudioOnly).map((format) => (
-                          <button
-                            key={format.formatId}
-                            className={`quality-option ${selectedFormat === format.formatId ? 'selected' : ''}`}
-                            onClick={() => setSelectedFormat(format.formatId)}
-                            disabled={isDownloading}
-                          >
-                            <div className="quality-info">
-                              <span className="quality-name">{format.quality}</span>
-                              <span className="quality-badge">{format.ext.toUpperCase()}</span>
+                        <div className="panel-content">
+                          {isLoadingFormats ? (
+                            <div className="loading-formats">
+                              <div className="spinner-small" />
+                              <span>LOADING FORMATS...</span>
                             </div>
-                          </button>
-                        ))}
+                          ) : (
+                            <div className="quality-list">
+                              {formats.filter(f => !f.isAudioOnly).map((format) => (
+                                <button
+                                  key={format.formatId}
+                                  className={`quality-option ${selectedFormat === format.formatId ? 'selected' : ''}`}
+                                  onClick={() => setSelectedFormat(format.formatId)}
+                                  disabled={isDownloading}
+                                >
+                                  <div className="quality-info">
+                                    <span className="quality-name">{format.quality}</span>
+                                    <span className="quality-badge">{format.ext.toUpperCase()}</span>
+                                  </div>
+                                  {format.filesize && (
+                                    <span className="quality-size">~{(format.filesize / 1024 / 1024).toFixed(0)} MB</span>
+                                  )}
+                                </button>
+                              ))}
+                            </div>
+                          )}
+                        </div>
+                      </div>
+
+                      <div className="panel-section">
+                        <div className="panel-header">
+                          <span className="panel-title">AUDIO ONLY</span>
+                        </div>
+                        <div className="panel-content">
+                          <div className="quality-list">
+                            {formats.filter(f => f.isAudioOnly).map((format) => (
+                              <button
+                                key={format.formatId}
+                                className={`quality-option ${selectedFormat === format.formatId ? 'selected' : ''}`}
+                                onClick={() => setSelectedFormat(format.formatId)}
+                                disabled={isDownloading}
+                              >
+                                <div className="quality-info">
+                                  <span className="quality-name">{format.quality}</span>
+                                  <span className="quality-badge">{format.ext.toUpperCase()}</span>
+                                </div>
+                              </button>
+                            ))}
+                          </div>
+                        </div>
                       </div>
                     </div>
-                  </div>
-                </div>
 
-                {/* Download Button */}
-                <div className="panel-actions">
-                  {isDownloading ? (
-                    <button className="btn-download btn-stop" onClick={cancelDownload} title="Escape">
-                      <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor">
-                        <rect x="6" y="6" width="12" height="12"/>
-                      </svg>
-                      ABORT DOWNLOAD
-                      <span className="shortcut-hint">Esc</span>
-                    </button>
-                  ) : (
-                    <button
-                      className="btn-download"
-                      onClick={handleStartDownload}
-                      disabled={!selectedFormat || isLoadingFormats}
-                      title="Ctrl+Enter"
-                    >
-                      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                        <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
-                        <polyline points="7 10 12 15 17 10"/>
-                        <line x1="12" y1="15" x2="12" y2="3"/>
-                      </svg>
-                      EXECUTE DOWNLOAD
-                      <span className="shortcut-hint">Ctrl+Enter</span>
-                    </button>
-                  )}
-                </div>
+                    {/* Download Button */}
+                    <div className="panel-actions">
+                      {isDownloading ? (
+                        <button className="btn-download btn-stop" onClick={cancelDownload} title="Escape">
+                          <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor">
+                            <rect x="6" y="6" width="12" height="12"/>
+                          </svg>
+                          ABORT DOWNLOAD
+                          <span className="shortcut-hint">Esc</span>
+                        </button>
+                      ) : (contentInfo.type === 'playlist' || contentInfo.type === 'channel') ? (
+                        <button
+                          className="btn-download"
+                          onClick={handleDownloadAll}
+                          disabled={isLoadingFormats || isActiveDownload}
+                          title="Ctrl+Enter"
+                        >
+                          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                            <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
+                            <polyline points="7 10 12 15 17 10"/>
+                            <line x1="12" y1="15" x2="12" y2="3"/>
+                          </svg>
+                          {contentInfo.type === 'playlist'
+                            ? `DOWNLOAD ALL (${contentInfo.videoCount || contentInfo.entries?.length || 0})`
+                            : `DOWNLOAD EVERYTHING (${contentInfo.videoCount || contentInfo.entries?.length || 0})`
+                          }
+                          <span className="shortcut-hint">Ctrl+Enter</span>
+                        </button>
+                      ) : (
+                        <button
+                          className="btn-download"
+                          onClick={handleStartDownload}
+                          disabled={!selectedFormat || isLoadingFormats}
+                          title="Ctrl+Enter"
+                        >
+                          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                            <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
+                            <polyline points="7 10 12 15 17 10"/>
+                            <line x1="12" y1="15" x2="12" y2="3"/>
+                          </svg>
+                          EXECUTE DOWNLOAD
+                          <span className="shortcut-hint">Ctrl+Enter</span>
+                        </button>
+                      )}
+                    </div>
+                  </>
+                )}
               </div>
             )}
           </>
@@ -1144,6 +1169,23 @@ function App() {
                   <div className="toggle-knob" />
                 </button>
               </div>
+
+              <div className="setting-item">
+                <div className="setting-info">
+                  <div className="setting-label">Font Size</div>
+                  <div className="setting-description">Adjust the interface text size</div>
+                </div>
+                <select
+                  className="setting-select"
+                  value={settings.fontSize || 'medium'}
+                  onChange={(e) => updateSettings({ fontSize: e.target.value as 'small' | 'medium' | 'large' | 'x-large' })}
+                >
+                  <option value="small">Small</option>
+                  <option value="medium">Medium (Default)</option>
+                  <option value="large">Large</option>
+                  <option value="x-large">Extra Large</option>
+                </select>
+              </div>
             </div>
 
             <div className="settings-group">
@@ -1196,6 +1238,13 @@ function App() {
                 </div>
                 <span className="credits-hint">Click me!</span>
               </div>
+              <div className="setting-item clickable" onClick={handleCreditsClick}>
+                <div className="setting-info">
+                  <div className="setting-label">Bug Hunter</div>
+                  <div className="setting-description credits-name">Abdullah Awan - First to identify issues</div>
+                </div>
+                <span className="credits-hint">Click me!</span>
+              </div>
             </div>
           </div>
         )}
@@ -1203,18 +1252,19 @@ function App() {
         {/* Confetti overlay */}
         {showConfetti && (
           <div className="confetti-overlay">
-            {[...Array(50)].map((_, i) => (
+            {[...Array(80)].map((_, i) => (
               <div
                 key={i}
                 className="confetti-piece"
                 style={{
                   left: `${Math.random() * 100}%`,
-                  animationDelay: `${Math.random() * 0.5}s`,
-                  backgroundColor: ['#00ff88', '#ffaa00', '#ff6b6b', '#00d4ff', '#ff00ff'][Math.floor(Math.random() * 5)],
+                  animationDelay: `${Math.random() * 0.8}s`,
+                  backgroundColor: ['#00ff88', '#ffaa00', '#ff6b6b', '#00d4ff', '#ff00ff', '#ffd700', '#7b68ee'][Math.floor(Math.random() * 7)],
+                  transform: `rotate(${Math.random() * 360}deg)`,
                 }}
               />
             ))}
-            <div className="confetti-text">Thanks Ali!</div>
+            <div className="confetti-text">Thank You!</div>
           </div>
         )}
       </div>

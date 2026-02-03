@@ -67,6 +67,7 @@ const defaultSettings: AppSettings = {
   maxConcurrentDownloads: 1,
   delayBetweenDownloads: 2000,
   theme: 'dark',
+  fontSize: 'medium',
 }
 
 export const useDownloadStore = create<DownloadState>((set, get) => ({

@@ -103,6 +103,7 @@ export interface AppSettings {
   maxConcurrentDownloads: number
   delayBetweenDownloads: number
   theme: 'light' | 'dark' | 'system'
+  fontSize: 'small' | 'medium' | 'large' | 'x-large'
 }
 
 export interface ElectronAPI {
@@ -133,6 +134,7 @@ export interface ElectronAPI {
   addToHistory: (item: HistoryItem) => Promise<void>
   clearHistory: () => Promise<void>
   removeFromHistory: (id: string) => Promise<void>
+  onHistoryAdded: (callback: (item: HistoryItem) => void) => () => void
   openFile: (filePath: string) => Promise<void>
   openFolder: (filePath: string) => Promise<void>
   selectFolder: () => Promise<string | null>

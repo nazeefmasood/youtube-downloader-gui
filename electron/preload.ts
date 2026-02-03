@@ -89,6 +89,20 @@ contextBridge.exposeInMainWorld('electronAPI', {
   }) => ipcRenderer.invoke('history:add', item),
   removeFromHistory: (id: string) => ipcRenderer.invoke('history:remove', id),
   clearHistory: () => ipcRenderer.invoke('history:clear'),
+  onHistoryAdded: (callback: (item: {
+    id: string
+    title: string
+    url: string
+    thumbnail?: string
+    downloadDate: string
+    filePath: string
+    status: string
+    type: string
+  }) => void) => {
+    const subscription = (_event: Electron.IpcRendererEvent, item: Parameters<typeof callback>[0]) => callback(item)
+    ipcRenderer.on('history:added', subscription)
+    return () => ipcRenderer.removeListener('history:added', subscription)
+  },
 
   // File operations
   openFile: (filePath: string) => ipcRenderer.invoke('file:open', filePath),

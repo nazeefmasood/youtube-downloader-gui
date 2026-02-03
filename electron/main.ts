@@ -133,6 +133,33 @@ function createWindow() {
     mainWindow?.webContents.send('queue:update', status)
   })
 
+  // Add completed queue items to history
+  queueManager.on('itemComplete', (item: {
+    id: string
+    title: string
+    url: string
+    thumbnail?: string
+    filePath?: string
+    audioOnly: boolean
+  }) => {
+    const historyItem = {
+      id: `queue-${item.id}-${Date.now()}`,
+      title: item.title,
+      url: item.url,
+      thumbnail: item.thumbnail,
+      downloadDate: new Date().toISOString(),
+      filePath: item.filePath || '',
+      status: 'completed',
+      type: item.audioOnly ? 'audio' : 'video',
+    }
+    const history = store.get('history')
+    history.unshift(historyItem)
+    store.set('history', history.slice(0, 100))
+    logger.info('Added to history', item.title)
+    // Notify frontend to update history
+    mainWindow?.webContents.send('history:added', historyItem)
+  })
+
   // Start HTTP server for extension communication
   startHttpServer(queueManager).then((server) => {
     httpServer = server
@@ -285,6 +312,7 @@ ipcMain.handle('settings:get', () => {
     maxConcurrentDownloads: 1,
     delayBetweenDownloads: 2000,
     theme: 'dark',
+    fontSize: 'medium',
   }
   return { ...defaults, ...store.get('settings') }
 })

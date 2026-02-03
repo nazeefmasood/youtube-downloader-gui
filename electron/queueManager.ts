@@ -122,6 +122,15 @@ export class QueueManager extends EventEmitter {
           if (result.success) {
             item.status = 'completed'
             logger.info('Download completed', item.title)
+            // Emit item complete event for history
+            this.emit('itemComplete', {
+              id: item.id,
+              title: item.title,
+              url: item.url,
+              thumbnail: item.thumbnail,
+              filePath: result.filePath,
+              audioOnly: item.audioOnly,
+            })
           } else {
             item.status = 'failed'
             item.error = result.error

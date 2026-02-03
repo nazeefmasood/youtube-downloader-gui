@@ -7,6 +7,7 @@ let modal = null;
 let currentVideoUrl = null;
 let lastInjectedUrl = null;
 let lastInjectedType = null;
+let lastVideoId = null;
 let observer = null;
 let urlCheckInterval = null;
 let injectionAttempts = 0;
@@ -19,6 +20,13 @@ function getPageType() {
   if (url.includes('youtube.com/playlist?list=')) return 'playlist';
   if (url.includes('youtube.com/@') || url.includes('youtube.com/channel/') || url.includes('youtube.com/c/')) return 'channel';
   return null;
+}
+
+// Extract video ID from URL
+function getVideoId() {
+  const url = window.location.href;
+  const match = url.match(/[?&]v=([^&]+)/);
+  return match ? match[1] : null;
 }
 
 // Create the download button element for videos
@@ -503,11 +511,29 @@ function injectPlaylistButton() {
   // Don't inject if already present
   if (document.getElementById('vidgrab-playlist-btn')) return true;
 
-  // Find playlist header area
-  const headerArea = document.querySelector('ytd-playlist-header-renderer .metadata-action-bar') ||
-                     document.querySelector('ytd-playlist-header-renderer #top-level-buttons') ||
-                     document.querySelector('#page-header-banner-container') ||
-                     document.querySelector('ytd-playlist-header-renderer');
+  // Find playlist header area - try multiple selectors for different playlist layouts
+  const selectors = [
+    'ytd-playlist-header-renderer #top-level-buttons-computed',
+    'ytd-playlist-header-renderer .metadata-action-bar',
+    'ytd-playlist-header-renderer #menu',
+    'ytd-playlist-header-renderer #top-level-buttons',
+    'ytd-playlist-header-renderer ytd-button-renderer',
+    '#page-header-banner-container',
+    'ytd-playlist-header-renderer #header-container',
+    'ytd-playlist-header-renderer',
+    // New YouTube layout selectors
+    'ytd-playlist-header-renderer yt-flexible-actions-view-model',
+    '.page-header-view-model-wiz__page-header-headline-info',
+    // Additional selectors for new layouts
+    'ytd-playlist-header-renderer #actions',
+    'ytd-playlist-header-renderer .yt-flexible-actions-view-model-wiz',
+  ];
+
+  let headerArea = null;
+  for (const selector of selectors) {
+    headerArea = document.querySelector(selector);
+    if (headerArea) break;
+  }
 
   if (headerArea) {
     const count = getVideoCount();
@@ -519,8 +545,12 @@ function injectPlaylistButton() {
     wrapper.appendChild(playlistButton);
 
     // Try to insert in a good spot
-    const buttonsContainer = headerArea.querySelector('#top-level-buttons') ||
-                             headerArea.querySelector('.metadata-action-bar');
+    const buttonsContainer = headerArea.querySelector('#top-level-buttons-computed') ||
+                             headerArea.querySelector('#top-level-buttons') ||
+                             headerArea.querySelector('.metadata-action-bar') ||
+                             headerArea.querySelector('yt-flexible-actions-view-model') ||
+                             headerArea.querySelector('#buttons') ||
+                             headerArea.querySelector('#menu');
 
     if (buttonsContainer) {
       buttonsContainer.appendChild(wrapper);
@@ -538,10 +568,28 @@ function injectChannelButton() {
   // Don't inject if already present
   if (document.getElementById('vidgrab-playlist-btn')) return true;
 
-  // Find channel header area - try multiple selectors
-  const headerArea = document.querySelector('#channel-header-container') ||
-                     document.querySelector('ytd-c4-tabbed-header-renderer') ||
-                     document.querySelector('#inner-header-container');
+  // Find channel header area - try multiple selectors for different channel layouts
+  const selectors = [
+    '#channel-header #buttons',
+    '#channel-header-container #buttons',
+    'ytd-c4-tabbed-header-renderer #buttons',
+    '#channel-header-container',
+    'ytd-c4-tabbed-header-renderer #inner-header-container',
+    'ytd-c4-tabbed-header-renderer',
+    '#inner-header-container',
+    // New YouTube layout selectors
+    '.page-header-view-model-wiz__page-header-headline-info',
+    'yt-page-header-renderer',
+    // Additional selectors for channel layouts
+    'yt-page-header-renderer #buttons',
+    '.yt-flexible-actions-view-model-wiz',
+  ];
+
+  let headerArea = null;
+  for (const selector of selectors) {
+    headerArea = document.querySelector(selector);
+    if (headerArea) break;
+  }
 
   if (headerArea) {
     playlistButton = createPlaylistButton('channel');
@@ -554,7 +602,9 @@ function injectChannelButton() {
     // Find buttons area in channel header
     const buttonsContainer = headerArea.querySelector('#buttons') ||
                              headerArea.querySelector('#subscribe-button')?.parentElement ||
-                             headerArea.querySelector('.yt-flexible-actions-view-model-wiz__action');
+                             headerArea.querySelector('.yt-flexible-actions-view-model-wiz__action') ||
+                             headerArea.querySelector('yt-flexible-actions-view-model') ||
+                             headerArea.querySelector('#inner-header-container');
 
     if (buttonsContainer) {
       buttonsContainer.appendChild(wrapper);
@@ -601,23 +651,134 @@ function injectButton() {
 }
 
 // Watch for page navigation (YouTube is a SPA)
+let injectionDebounceTimer = null;
+let lastInjectionTime = 0;
+
+function debounceInject(delay = 100) {
+  if (injectionDebounceTimer) {
+    clearTimeout(injectionDebounceTimer);
+  }
+  injectionDebounceTimer = setTimeout(() => {
+    const now = Date.now();
+    // Prevent too frequent injections
+    if (now - lastInjectionTime < 50) return;
+    lastInjectionTime = now;
+    injectButton();
+  }, delay);
+}
+
 function watchForNavigation() {
   let lastUrl = window.location.href;
 
-  // Use MutationObserver for DOM changes
-  observer = new MutationObserver(() => {
+  // Helper to check for video ID changes
+  function checkVideoIdChange() {
+    const pageType = getPageType();
+    if (pageType === 'video') {
+      const newVideoId = getVideoId();
+      if (newVideoId && newVideoId !== lastVideoId) {
+        lastVideoId = newVideoId;
+        removeAllButtons();
+        injectionAttempts = 0;
+        debounceInject(100);
+        setTimeout(() => debounceInject(300), 300);
+        setTimeout(() => debounceInject(600), 600);
+        return true;
+      }
+    }
+    return false;
+  }
+
+  // Listen for YouTube navigation events (most reliable)
+  window.addEventListener('yt-navigate-finish', () => {
+    injectionAttempts = 0;
+    lastUrl = window.location.href;
+    lastVideoId = getVideoId();
+    // Staggered injection attempts for reliability
+    debounceInject(100);
+    setTimeout(() => debounceInject(300), 300);
+    setTimeout(() => debounceInject(600), 600);
+    setTimeout(() => debounceInject(1000), 1000);
+    setTimeout(() => debounceInject(1500), 1500);
+  });
+
+  window.addEventListener('yt-navigate-start', () => {
+    removeAllButtons();
+    injectionAttempts = 0;
+    lastVideoId = null;
+  });
+
+  // Listen for YouTube page data updates (catches video changes within same page)
+  window.addEventListener('yt-page-data-updated', () => {
     const newUrl = window.location.href;
+    const videoIdChanged = checkVideoIdChange();
+
+    if (newUrl !== lastUrl || videoIdChanged) {
+      lastUrl = newUrl;
+      if (!videoIdChanged) {
+        injectionAttempts = 0;
+        removeAllButtons();
+      }
+      debounceInject(100);
+      setTimeout(() => debounceInject(300), 300);
+    }
+  });
+
+  // Also listen for popstate (back/forward)
+  window.addEventListener('popstate', () => {
+    injectionAttempts = 0;
+    lastVideoId = getVideoId();
+    debounceInject(100);
+    setTimeout(() => debounceInject(300), 300);
+    setTimeout(() => debounceInject(600), 600);
+  });
+
+  // Use MutationObserver only for detecting when action bar appears
+  observer = new MutationObserver((mutations) => {
+    const newUrl = window.location.href;
+    const pageType = getPageType();
+
+    // Check for video ID change (SPA navigation within video pages)
+    if (pageType === 'video') {
+      const newVideoId = getVideoId();
+      if (newVideoId && newVideoId !== lastVideoId) {
+        lastVideoId = newVideoId;
+        removeAllButtons();
+        injectionAttempts = 0;
+        debounceInject(100);
+        return;
+      }
+    }
 
     // URL changed - need to reinject
     if (newUrl !== lastUrl) {
       lastUrl = newUrl;
+      lastVideoId = getVideoId();
       injectionAttempts = 0;
-      // Try multiple times as YouTube loads content async
-      setTimeout(() => injectButton(), 100);
-      setTimeout(() => injectButton(), 500);
-      setTimeout(() => injectButton(), 1000);
-      setTimeout(() => injectButton(), 2000);
-      setTimeout(() => injectButton(), 3000);
+      removeAllButtons();
+      debounceInject(100);
+      return;
+    }
+
+    // Check if relevant elements appeared
+    if (!pageType) return;
+
+    const hasButton = (pageType === 'video' || pageType === 'shorts')
+      ? document.getElementById('vidgrab-download-btn')
+      : document.getElementById('vidgrab-playlist-btn');
+
+    if (!hasButton && injectionAttempts < 50) {
+      // Check if action bar exists now
+      const actionBar = document.querySelector('#top-level-buttons-computed');
+      const playlistHeader = document.querySelector('ytd-playlist-header-renderer');
+      const channelHeader = document.querySelector('#channel-header-container, ytd-c4-tabbed-header-renderer, yt-page-header-renderer');
+
+      if ((pageType === 'video' || pageType === 'shorts') && actionBar) {
+        debounceInject(50);
+      } else if (pageType === 'playlist' && playlistHeader) {
+        debounceInject(50);
+      } else if (pageType === 'channel' && channelHeader) {
+        debounceInject(50);
+      }
     }
   });
 
@@ -626,48 +787,42 @@ function watchForNavigation() {
     subtree: true,
   });
 
-  // Listen for YouTube navigation events
-  window.addEventListener('yt-navigate-finish', () => {
-    injectionAttempts = 0;
-    setTimeout(() => injectButton(), 100);
-    setTimeout(() => injectButton(), 500);
-    setTimeout(() => injectButton(), 1000);
-  });
-
-  window.addEventListener('yt-navigate-start', () => {
-    removeAllButtons();
-    injectionAttempts = 0;
-  });
-
-  // Also listen for popstate (back/forward)
-  window.addEventListener('popstate', () => {
-    injectionAttempts = 0;
-    setTimeout(() => injectButton(), 100);
-    setTimeout(() => injectButton(), 500);
-  });
-
-  // Poll for URL changes and missing buttons as a fallback
+  // Poll for missing buttons as a fallback (less aggressive)
   urlCheckInterval = setInterval(() => {
     const newUrl = window.location.href;
     const pageType = getPageType();
 
+    // Check for video ID change
+    if (pageType === 'video') {
+      const newVideoId = getVideoId();
+      if (newVideoId && newVideoId !== lastVideoId) {
+        lastVideoId = newVideoId;
+        removeAllButtons();
+        injectionAttempts = 0;
+        debounceInject(100);
+        return;
+      }
+    }
+
     // URL changed
     if (newUrl !== lastUrl) {
       lastUrl = newUrl;
+      lastVideoId = getVideoId();
       injectionAttempts = 0;
-      injectButton();
+      removeAllButtons();
+      debounceInject(100);
       return;
     }
 
     // Check if button should be there but isn't
-    if (pageType && injectionAttempts < 20) {
+    if (pageType && injectionAttempts < 50) {
       const hasButton = (pageType === 'video' || pageType === 'shorts')
         ? document.getElementById('vidgrab-download-btn')
         : document.getElementById('vidgrab-playlist-btn');
 
       if (!hasButton) {
         injectionAttempts++;
-        injectButton();
+        debounceInject(100);
       }
     }
   }, 500);
