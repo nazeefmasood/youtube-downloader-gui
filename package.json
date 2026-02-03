@@ -66,12 +66,16 @@
       {
         "from": "binaries/",
         "to": "binaries/",
-        "filter": ["**/*"]
+        "filter": [
+          "**/*"
+        ]
       },
       {
         "from": "assets/",
         "to": "assets/",
-        "filter": ["**/*"]
+        "filter": [
+          "**/*"
+        ]
       }
     ],
     "asarUnpack": [
@@ -79,9 +83,10 @@
       "**/node_modules/ffprobe-static/**"
     ],
     "win": {
-      "target": ["nsis"],
-      "icon": "resources/icon.ico",
-      "publisherName": "VidGrab"
+      "target": [
+        "nsis"
+      ],
+      "icon": "resources/icon.ico"
     },
     "nsis": {
       "oneClick": false,
@@ -96,7 +101,10 @@
       "deleteAppDataOnUninstall": false
     },
     "mac": {
-      "target": ["dmg", "zip"],
+      "target": [
+        "dmg",
+        "zip"
+      ],
       "icon": "resources/icon.icns",
       "category": "public.app-category.utilities"
     },
@@ -105,19 +113,26 @@
       "icon": "resources/icon.icns"
     },
     "linux": {
-      "target": ["AppImage", "deb"],
+      "target": [
+        "AppImage",
+        "deb"
+      ],
       "icon": "resources/icon.png",
       "category": "AudioVideo",
       "synopsis": "YouTube Video Downloader",
-      "description": "Fast & beautiful YouTube video downloader - Download videos, playlists, and channels with ease. Powered by yt-dlp.",
-      "desktop": {
-        "Name": "VidGrab",
-        "Comment": "YouTube Video Downloader",
-        "Categories": "AudioVideo;Video;Network"
-      }
+      "description": "Fast & beautiful YouTube video downloader - Download videos, playlists, and channels with ease. Powered by yt-dlp."
     },
     "deb": {
-      "depends": ["libgtk-3-0", "libnotify4", "libnss3", "libxss1", "libxtst6", "xdg-utils", "libatspi2.0-0", "libuuid1"]
+      "depends": [
+        "libgtk-3-0",
+        "libnotify4",
+        "libnss3",
+        "libxss1",
+        "libxtst6",
+        "xdg-utils",
+        "libatspi2.0-0",
+        "libuuid1"
+      ]
     }
   }
 }
