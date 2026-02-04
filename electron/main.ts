@@ -88,7 +88,7 @@ function createWindow() {
   // Load the app
   if (process.env.NODE_ENV === 'development' || process.argv.includes('--dev')) {
     mainWindow.loadURL('http://localhost:5173')
-    mainWindow.webContents.openDevTools()
+    // mainWindow.webContents.openDevTools()
   } else {
     mainWindow.loadFile(path.join(__dirname, '../dist/index.html'))
   }
@@ -272,6 +272,23 @@ ipcMain.handle('formats:get', async (_event, url: string) => {
     return formats
   } catch (error) {
     logger.error('Get formats failed', error instanceof Error ? error : String(error))
+    throw error
+  }
+})
+
+// Get subtitles
+ipcMain.handle('subtitles:get', async (_event, url: string) => {
+  if (!downloader) {
+    logger.error('Get subtitles failed', 'Downloader not initialized')
+    throw new Error('Downloader not initialized')
+  }
+  try {
+    logger.info('Fetching subtitles', url)
+    const subtitles = await downloader.getSubtitles(url)
+    logger.info('Subtitles fetched successfully', `Found ${subtitles.length} tracks`)
+    return subtitles
+  } catch (error) {
+    logger.error('Get subtitles failed', error instanceof Error ? error : String(error))
     throw error
   }
 })

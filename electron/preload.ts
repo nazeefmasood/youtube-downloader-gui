@@ -14,6 +14,9 @@ contextBridge.exposeInMainWorld('electronAPI', {
   // Formats
   getFormats: (url: string) => ipcRenderer.invoke('formats:get', url),
 
+  // Subtitles
+  getSubtitles: (url: string) => ipcRenderer.invoke('subtitles:get', url),
+
   // Download
   startDownload: (options: {
     url: string

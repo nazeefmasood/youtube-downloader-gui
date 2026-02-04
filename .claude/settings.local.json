@@ -29,7 +29,9 @@
       "Bash(python3:*)",
       "Bash(pkill:*)",
       "Bash(fuser:*)",
-      "Bash(kill:*)"
+      "Bash(kill:*)",
+      "WebSearch",
+      "WebFetch(domain:github.com)"
     ]
   }
 }

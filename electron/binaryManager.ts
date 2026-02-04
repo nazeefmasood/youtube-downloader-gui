@@ -2,8 +2,10 @@ import * as fs from 'fs'
 import * as path from 'path'
 import * as https from 'https'
 import { app, BrowserWindow } from 'electron'
+import { execSync } from 'child_process'
 import { logger } from './logger'
 
+// Latest version with critical YouTube fixes (bot detection, player clients, format handling)
 const YTDLP_VERSION = '2026.01.31'
 
 interface BinaryInfo {
@@ -38,14 +40,15 @@ export class BinaryManager {
     let binaryName: string
     let url: string
 
+    // Include version in filename to track and update binaries properly
     if (platform === 'win32') {
-      binaryName = 'yt-dlp.exe'
+      binaryName = `yt-dlp_${YTDLP_VERSION}.exe`
       url = `https://github.com/yt-dlp/yt-dlp/releases/download/${YTDLP_VERSION}/yt-dlp.exe`
     } else if (platform === 'darwin') {
-      binaryName = 'yt-dlp-macos'
+      binaryName = `yt-dlp-macos_${YTDLP_VERSION}`
       url = `https://github.com/yt-dlp/yt-dlp/releases/download/${YTDLP_VERSION}/yt-dlp_macos`
     } else {
-      binaryName = 'yt-dlp-linux'
+      binaryName = `yt-dlp-linux_${YTDLP_VERSION}`
       url = `https://github.com/yt-dlp/yt-dlp/releases/download/${YTDLP_VERSION}/yt-dlp_linux`
     }
 
@@ -58,8 +61,100 @@ export class BinaryManager {
     }
   }
 
+  // Get the base name pattern for old binaries (without version)
+  private getOldBinaryPattern(): string {
+    const platform = process.platform
+    if (platform === 'win32') {
+      return 'yt-dlp'
+    } else if (platform === 'darwin') {
+      return 'yt-dlp-macos'
+    } else {
+      return 'yt-dlp-linux'
+    }
+  }
+
+  // Clean up old unversioned or different-versioned binaries
+  private cleanOldBinaries(): void {
+    const binary = this.getBinaryInfo()
+    const oldPattern = this.getOldBinaryPattern()
+
+    try {
+      // Clean from bundled path
+      if (fs.existsSync(this.bundledPath)) {
+        const bundledFiles = fs.readdirSync(this.bundledPath)
+        for (const file of bundledFiles) {
+          if (file.startsWith(oldPattern) && file !== binary.name) {
+            const filePath = path.join(this.bundledPath, file)
+            try {
+              fs.unlinkSync(filePath)
+              logger.info('Cleaned old binary', filePath)
+            } catch (e) {
+              logger.warn('Failed to clean old binary', `${filePath}: ${e}`)
+            }
+          }
+        }
+      }
+
+      // Clean from userData path
+      if (fs.existsSync(this.userDataPath)) {
+        const userFiles = fs.readdirSync(this.userDataPath)
+        for (const file of userFiles) {
+          if (file.startsWith(oldPattern) && file !== binary.name) {
+            const filePath = path.join(this.userDataPath, file)
+            try {
+              fs.unlinkSync(filePath)
+              logger.info('Cleaned old binary', filePath)
+            } catch (e) {
+              logger.warn('Failed to clean old binary', `${filePath}: ${e}`)
+            }
+          }
+        }
+      }
+    } catch (err) {
+      logger.error('Error cleaning old binaries', err instanceof Error ? err : String(err))
+    }
+  }
+
+  // Verify that the binary is functional by running --version
+  private verifyBinary(binaryPath: string): boolean {
+    try {
+      // Check file size (yt-dlp should be at least 1MB)
+      const stats = fs.statSync(binaryPath)
+      if (stats.size < 1024 * 1024) {
+        logger.error('Binary verification failed', `File too small: ${stats.size} bytes`)
+        return false
+      }
+
+      // Run --version to verify binary works
+      const version = execSync(`"${binaryPath}" --version`, { timeout: 15000 }).toString().trim()
+      logger.info('Binary verified', `Version: ${version}`)
+      return true
+    } catch (err) {
+      logger.error('Binary verification failed', err instanceof Error ? err.message : String(err))
+      return false
+    }
+  }
+
+  // Check if the correct versioned binary exists
+  hasCorrectVersion(): boolean {
+    const binary = this.getBinaryInfo()
+
+    // Check bundled path
+    const bundledPath = path.join(this.bundledPath, binary.name)
+    if (fs.existsSync(bundledPath)) {
+      return true
+    }
+
+    // Check user data path
+    const userDataPath = path.join(this.userDataPath, binary.name)
+    return fs.existsSync(userDataPath)
+  }
+
   isBinaryInstalled(): boolean {
     const binary = this.getBinaryInfo()
+
+    // Clean old binaries when checking (ensures we use the correct version)
+    this.cleanOldBinaries()
 
     // Check bundled path first
     const bundledPath = path.join(this.bundledPath, binary.name)
@@ -142,20 +237,36 @@ export class BinaryManager {
             file.on('finish', () => {
               file.close()
 
-              // Make executable on Unix systems
-              if (binary.executable) {
-                try {
-                  fs.chmodSync(targetPath, 0o755)
-                } catch (err) {
-                  logger.error('Failed to make binary executable', err instanceof Error ? err : String(err))
+              // Wait for file system to fully flush the file to disk
+              // This prevents "Text file busy" errors when trying to execute the binary
+              setTimeout(() => {
+                // Make executable on Unix systems
+                if (binary.executable) {
+                  try {
+                    fs.chmodSync(targetPath, 0o755)
+                  } catch (err) {
+                    logger.error('Failed to make binary executable', err instanceof Error ? err : String(err))
+                  }
                 }
-              }
 
-              logger.info('Binary download complete', targetPath)
-              mainWindow?.webContents.send('binary:download-complete', {
-                path: targetPath,
-              })
-              resolve(true)
+                // Verify the downloaded binary works
+                if (!this.verifyBinary(targetPath)) {
+                  try {
+                    fs.unlinkSync(targetPath)
+                  } catch (e) { /* ignore */ }
+                  const error = 'Binary verification failed - downloaded file may be corrupted'
+                  logger.error('Binary download failed', error)
+                  mainWindow?.webContents.send('binary:download-error', { error })
+                  resolve(false)
+                  return
+                }
+
+                logger.info('Binary download complete', targetPath)
+                mainWindow?.webContents.send('binary:download-complete', {
+                  path: targetPath,
+                })
+                resolve(true)
+              }, 500) // 500ms delay to ensure file is fully written
             })
 
             file.on('error', (err) => {
