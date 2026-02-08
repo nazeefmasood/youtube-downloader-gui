@@ -127,6 +127,8 @@ contextBridge.exposeInMainWorld('electronAPI', {
   pauseQueue: () => ipcRenderer.invoke('queue:pause'),
   resumeQueue: () => ipcRenderer.invoke('queue:resume'),
   clearQueue: () => ipcRenderer.invoke('queue:clear'),
+  retryQueueItem: (id: string) => ipcRenderer.invoke('queue:retry', id),
+  retryAllFailed: () => ipcRenderer.invoke('queue:retryAllFailed'),
   onQueueUpdate: (callback: (status: {
     items: Array<{
       id: string
@@ -162,6 +164,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
   // Binary management
   checkBinary: () => ipcRenderer.invoke('binary:check'),
   downloadBinary: () => ipcRenderer.invoke('binary:download'),
+  getBinaryStatus: () => ipcRenderer.invoke('binary:status'),
   onBinaryDownloadStart: (callback: (data: { name: string }) => void) => {
     const subscription = (_event: Electron.IpcRendererEvent, data: Parameters<typeof callback>[0]) => callback(data)
     ipcRenderer.on('binary:download-start', subscription)

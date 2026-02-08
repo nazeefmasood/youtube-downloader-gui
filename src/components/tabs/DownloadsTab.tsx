@@ -48,6 +48,14 @@ export function DownloadsTab({ queueStatus, downloadProgress }: DownloadsTabProp
     window.electronAPI.clearQueue()
   }, [])
 
+  const handleRetryQueueItem = useCallback((id: string) => {
+    window.electronAPI.retryQueueItem(id)
+  }, [])
+
+  const handleRetryAllFailed = useCallback(() => {
+    window.electronAPI.retryAllFailed()
+  }, [])
+
   const getQueueStatusIcon = (status: QueueItem['status']) => {
     switch (status) {
       case 'pending':
@@ -148,6 +156,19 @@ export function DownloadsTab({ queueStatus, downloadProgress }: DownloadsTabProp
           COMPLETED ({queueStatus.items.filter((i) => i.status === 'completed').length})
         </button>
         <div className="filter-spacer" />
+        {queueStatus.items.filter((i) => i.status === 'failed').length > 0 && (
+          <button
+            type="button"
+            className="btn-retry-all"
+            onClick={handleRetryAllFailed}
+          >
+            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+              <polyline points="23 4 23 10 17 10" />
+              <path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10" />
+            </svg>
+            RETRY FAILED
+          </button>
+        )}
         {activeQueueItems.length > 0 && (
           <button
             type="button"
@@ -270,6 +291,19 @@ export function DownloadsTab({ queueStatus, downloadProgress }: DownloadsTabProp
                     >
                       <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor">
                         <rect x="6" y="6" width="12" height="12" />
+                      </svg>
+                    </button>
+                  )}
+                  {(item.status === 'failed' || item.status === 'cancelled') && (
+                    <button
+                      type="button"
+                      className="queue-btn-retry"
+                      onClick={() => handleRetryQueueItem(item.id)}
+                      title="Retry"
+                    >
+                      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                        <polyline points="23 4 23 10 17 10" />
+                        <path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10" />
                       </svg>
                     </button>
                   )}

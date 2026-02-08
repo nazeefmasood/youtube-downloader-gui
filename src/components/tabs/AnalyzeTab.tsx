@@ -41,6 +41,17 @@ export function AnalyzeTab({ onAddToQueue }: AnalyzeTabProps) {
     return `${mins}:${secs.toString().padStart(2, '0')}`
   }
 
+  const formatFileSize = (bytes?: number) => {
+    if (!bytes) return null
+    if (bytes < 1024 * 1024) {
+      return `${(bytes / 1024).toFixed(1)} KB`
+    } else if (bytes < 1024 * 1024 * 1024) {
+      return `${(bytes / (1024 * 1024)).toFixed(1)} MB`
+    } else {
+      return `${(bytes / (1024 * 1024 * 1024)).toFixed(2)} GB`
+    }
+  }
+
   const handleAnalyze = useCallback(() => {
     if (urlInput.trim()) {
       detectUrl(urlInput.trim())
@@ -381,6 +392,9 @@ export function AnalyzeTab({ onAddToQueue }: AnalyzeTabProps) {
                             <span className="quality-name">{format.quality}</span>
                             <span className="quality-badge">{format.ext.toUpperCase()}</span>
                           </div>
+                          {formatFileSize(format.filesize) && (
+                            <div className="quality-size">{formatFileSize(format.filesize)}</div>
+                          )}
                         </button>
                       ))}
                     </div>
@@ -405,6 +419,9 @@ export function AnalyzeTab({ onAddToQueue }: AnalyzeTabProps) {
                           <span className="quality-name">{format.quality}</span>
                           <span className="quality-badge">{format.ext.toUpperCase()}</span>
                         </div>
+                        {formatFileSize(format.filesize) && (
+                          <div className="quality-size">{formatFileSize(format.filesize)}</div>
+                        )}
                       </button>
                     ))}
                   </div>

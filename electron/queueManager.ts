@@ -263,6 +263,14 @@ export class QueueManager extends EventEmitter {
     this.isProcessing = true
     this.currentItemId = nextItem.id
     nextItem.status = 'downloading'
+    // Set initial progress so UI shows progress bar immediately
+    nextItem.progress = {
+      percent: 0,
+      currentFile: nextItem.title,
+      currentIndex: 1,
+      totalFiles: 1,
+      status: 'downloading',
+    }
     logger.info('Starting download', `${nextItem.title} (${nextItem.id})`)
     this.emitUpdate()
 
@@ -324,6 +332,55 @@ export class QueueManager extends EventEmitter {
     // Remove all items
     this.items = []
     this.emitUpdate()
+  }
+
+  retryItem(id: string): boolean {
+    const item = this.items.find(i => i.id === id)
+    if (!item) return false
+
+    // Only retry failed or cancelled items
+    if (item.status !== 'failed' && item.status !== 'cancelled') {
+      return false
+    }
+
+    logger.info('Retrying download', item.title)
+
+    // Reset item status
+    item.status = 'pending'
+    item.error = undefined
+    item.progress = undefined
+
+    this.emitUpdate()
+
+    // Start processing if not already
+    if (!this.isProcessing && !this.isPaused) {
+      this.processNext()
+    }
+
+    return true
+  }
+
+  retryAllFailed(): number {
+    let retriedCount = 0
+    const failedItems = this.items.filter(i => i.status === 'failed')
+
+    for (const item of failedItems) {
+      item.status = 'pending'
+      item.error = undefined
+      item.progress = undefined
+      retriedCount++
+    }
+
+    if (retriedCount > 0) {
+      logger.info('Retrying all failed downloads', `${retriedCount} items`)
+      this.emitUpdate()
+
+      if (!this.isProcessing && !this.isPaused) {
+        this.processNext()
+      }
+    }
+
+    return retriedCount
   }
 
   getDownloader(): Downloader {

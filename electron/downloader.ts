@@ -109,16 +109,21 @@ export class Downloader extends EventEmitter {
         logger.error('yt-dlp binary not found', this.ytdlpPath)
       }
 
-      // Check ffmpeg
-      logger.info('Verifying ffmpeg binary', this.ffmpegPath)
-      if (this.ffmpegPath && this.ffmpegPath !== 'ffmpeg') {
-        if (fs.existsSync(this.ffmpegPath)) {
-          logger.info('ffmpeg binary found', this.ffmpegPath)
-        } else {
-          logger.warn('ffmpeg binary not found at path', this.ffmpegPath)
-        }
+      // Check ffmpeg using binaryManager
+      const ffmpegStatus = binaryManager.checkFfmpeg()
+      if (ffmpegStatus.available) {
+        this.ffmpegPath = ffmpegStatus.path || 'ffmpeg'
+        logger.info('ffmpeg verified', `Path: ${this.ffmpegPath}, Version: ${ffmpegStatus.version}`)
       } else {
-        logger.info('Using system ffmpeg')
+        logger.error('ffmpeg not available', 'Video downloads may fail without ffmpeg')
+      }
+
+      // Check ffprobe
+      const ffprobeStatus = binaryManager.checkFfprobe()
+      if (ffprobeStatus.available) {
+        logger.info('ffprobe verified', ffprobeStatus.path || 'system ffprobe')
+      } else {
+        logger.warn('ffprobe not available', 'Some features may be limited')
       }
     } catch (err) {
       logger.error('Binary verification failed', err instanceof Error ? err : String(err))
@@ -134,15 +139,24 @@ export class Downloader extends EventEmitter {
   }
 
   private getFfmpegPath(): string {
-    // Use ffmpeg-static which provides the path to bundled ffmpeg
-    try {
-      // eslint-disable-next-line @typescript-eslint/no-require-imports
-      const ffmpegStatic = require('ffmpeg-static')
-      return ffmpegStatic
-    } catch {
-      // Fallback to system ffmpeg
-      return 'ffmpeg'
+    // Use binaryManager to get ffmpeg path
+    const ffmpegStatus = binaryManager.checkFfmpeg()
+    if (ffmpegStatus.available && ffmpegStatus.path) {
+      return ffmpegStatus.path
     }
+    // Fallback to system ffmpeg (will fail if not installed)
+    return 'ffmpeg'
+  }
+
+  // Check if ffmpeg is available for downloads
+  isFfmpegAvailable(): boolean {
+    const status = binaryManager.checkFfmpeg()
+    return status.available
+  }
+
+  // Get binary status for UI
+  getBinaryStatus() {
+    return binaryManager.getBinaryStatus()
   }
 
   private runYtdlp(args: string[], isDetection = false): Promise<string> {
@@ -201,10 +215,6 @@ export class Downloader extends EventEmitter {
       this.detectionProcess.kill('SIGTERM')
       this.detectionProcess = null
     }
-  }
-
-  private delay(ms: number): Promise<void> {
-    return new Promise(resolve => setTimeout(resolve, ms))
   }
 
   async detectUrl(url: string): Promise<ContentInfo> {
@@ -278,10 +288,10 @@ export class Downloader extends EventEmitter {
   private getDefaultFormats(): VideoFormat[] {
     return [
       { formatId: 'bestvideo+bestaudio/best', ext: 'mp4', resolution: 'best', quality: 'Best Quality', isAudioOnly: false },
-      { formatId: 'bestvideo[height<=1080]+bestaudio/best[height<=1080]', ext: 'mp4', resolution: '1080p', quality: '1080p', isAudioOnly: false },
-      { formatId: 'bestvideo[height<=720]+bestaudio/best[height<=720]', ext: 'mp4', resolution: '720p', quality: '720p', isAudioOnly: false },
-      { formatId: 'bestvideo[height<=480]+bestaudio/best[height<=480]', ext: 'mp4', resolution: '480p', quality: '480p', isAudioOnly: false },
-      { formatId: 'bestvideo[height<=360]+bestaudio/best[height<=360]', ext: 'mp4', resolution: '360p', quality: '360p', isAudioOnly: false },
+      { formatId: 'bestvideo[height<=1080]+bestaudio/best', ext: 'mp4', resolution: '1080p', quality: '1080p', isAudioOnly: false },
+      { formatId: 'bestvideo[height<=720]+bestaudio/best', ext: 'mp4', resolution: '720p', quality: '720p', isAudioOnly: false },
+      { formatId: 'bestvideo[height<=480]+bestaudio/best', ext: 'mp4', resolution: '480p', quality: '480p', isAudioOnly: false },
+      { formatId: 'bestvideo[height<=360]+bestaudio/best', ext: 'mp4', resolution: '360p', quality: '360p', isAudioOnly: false },
       { formatId: 'bestaudio/best', ext: 'mp3', resolution: 'audio', quality: 'MP3 (Best)', isAudioOnly: true },
       { formatId: 'bestaudio[ext=m4a]/bestaudio/best', ext: 'm4a', resolution: 'audio', quality: 'M4A (Best)', isAudioOnly: true },
     ]
@@ -326,17 +336,28 @@ export class Downloader extends EventEmitter {
 
     const allFormats = info.formats || []
 
+    // Find best video and audio formats for filesize estimation
+    const bestVideoFormat = allFormats.find((f: Record<string, unknown>) =>
+      f.vcodec && f.vcodec !== 'none' && f.height
+    )
+    const bestAudioFormat = allFormats.find((f: Record<string, unknown>) =>
+      f.acodec && f.acodec !== 'none' && (!f.vcodec || f.vcodec === 'none')
+    )
+    const bestTotalSize = ((bestVideoFormat?.filesize as number) || 0) + ((bestAudioFormat?.filesize as number) || 0)
+
     // Add "Best Quality" option first - downloads highest available quality
     formats.push({
       formatId: 'bestvideo+bestaudio/best',
       ext: 'mp4',
       resolution: 'best',
       quality: 'Best Quality',
+      filesize: bestTotalSize > 0 ? bestTotalSize : undefined,
       isAudioOnly: false,
     })
 
     // Add combined format options (these are what most users want)
     // Include 8K (4320p) and other high resolutions
+    // Use fallback to 'best' without height constraint to avoid "format not available" errors
     const qualities = ['4320', '2160', '1440', '1080', '720', '480', '360']
     for (const q of qualities) {
       const hasQuality = allFormats.some((f: Record<string, unknown>) =>
@@ -344,45 +365,52 @@ export class Downloader extends EventEmitter {
       )
       if (hasQuality) {
         const label = q === '4320' ? '8K' : q === '2160' ? '4K' : `${q}p`
+        // Get estimated filesize for this quality
+        const videoFormat = allFormats.find((f: Record<string, unknown>) =>
+          f.height === parseInt(q) && f.vcodec && f.vcodec !== 'none'
+        )
+        const audioFormat = allFormats.find((f: Record<string, unknown>) =>
+          f.acodec && f.acodec !== 'none' && (!f.vcodec || f.vcodec === 'none')
+        )
+        const estimatedSize = ((videoFormat?.filesize as number) || 0) + ((audioFormat?.filesize as number) || 0)
+
         formats.push({
-          formatId: `bestvideo[height<=${q}]+bestaudio/best[height<=${q}]`,
+          formatId: `bestvideo[height<=${q}]+bestaudio/best`,
           ext: 'mp4',
           resolution: `${q}p`,
           quality: label,
+          filesize: estimatedSize > 0 ? estimatedSize : undefined,
           isAudioOnly: false,
         })
         seenQualities.add(q)
       }
     }
 
-    // Add audio-only options
+    // Add audio-only options with filesize estimation
+    const audioSize = (bestAudioFormat?.filesize as number) || undefined
     formats.push({
       formatId: 'bestaudio/best',
       ext: 'mp3',
       resolution: 'audio',
       quality: 'MP3 (Best)',
+      filesize: audioSize,
       isAudioOnly: true,
     })
 
+    // Find m4a specific format for better filesize
+    const m4aFormat = allFormats.find((f: Record<string, unknown>) =>
+      f.ext === 'm4a' && f.acodec && f.acodec !== 'none'
+    )
     formats.push({
       formatId: 'bestaudio[ext=m4a]/bestaudio/best',
       ext: 'm4a',
       resolution: 'audio',
       quality: 'M4A (Best)',
+      filesize: (m4aFormat?.filesize as number) || audioSize,
       isAudioOnly: true,
     })
 
     return formats
-  }
-
-  private getQualityLabel(height: number): string {
-    if (height >= 2160) return '2160p'
-    if (height >= 1440) return '1440p'
-    if (height >= 1080) return '1080p'
-    if (height >= 720) return '720p'
-    if (height >= 480) return '480p'
-    if (height >= 360) return '360p'
-    return `${height}p`
   }
 
   async getSubtitles(url: string): Promise<SubtitleInfo[]> {
@@ -467,26 +495,23 @@ export class Downloader extends EventEmitter {
       '--no-warnings',
       '--newline',
       '--progress',
-      // Use multi-client approach to avoid bot detection
-      '--extractor-args', 'youtube:player_client=default,web_creator,mweb,android',
-      // Add rate limiting to avoid IP blocking
-      '--sleep-requests', '1',
-      '--extractor-retries', '3',
+      // Retry options for handling 403 errors and network issues
+      '--retries', '10',
+      '--fragment-retries', '10',
+      '--extractor-retries', '5',
+      '--file-access-retries', '5',
+      // Rate limiting to avoid IP blocking
+      '--sleep-requests', '1.5',
       '--socket-timeout', '30',
+      // Use native HLS downloader for better m3u8 handling
+      '--hls-prefer-native',
+      // Use cookies from browser to bypass 403 errors during download
+      // This is safe here because we already detected formats without cookies
+      '--cookies-from-browser', 'chrome',
+      // FFmpeg location
       '--ffmpeg-location', this.ffmpegPath,
     ]
-
-    // Try to extract cookies from browser to bypass bot detection and age restrictions
-    // This significantly improves success rate for YouTube downloads
-    // yt-dlp will try Chrome first, then other browsers automatically
-    args.push('--cookies-from-browser', 'chrome')
-    logger.info('Attempting to use cookies from Chrome browser')
-
-    // Prefer HTTPS protocol over m3u8 streams to avoid ffmpeg issues
-    // This fixes "downloaded file is empty" errors with certain formats
-    if (!audioOnly) {
-      args.push('-S', 'proto:https')
-    }
+    logger.info('Using cookies from Chrome for download')
 
     // Output template
     if (contentInfo.type === 'playlist') {
@@ -498,18 +523,32 @@ export class Downloader extends EventEmitter {
       args.push('-o', path.join(outputDir, '%(title)s.%(ext)s'))
     }
 
-    // Format selection - IMPORTANT: merge into single file
+    // Format selection - IMPORTANT: merge into single file with robust fallbacks
     if (audioOnly) {
-      // Audio-only download
+      // Audio-only download with fallbacks
       args.push('-f', 'bestaudio/best')
       args.push('-x') // Extract audio
       const ext = format.includes('m4a') ? 'm4a' : 'mp3'
       args.push('--audio-format', ext)
       args.push('--audio-quality', '0') // Best quality
     } else {
-      // Video format with audio merged
-      args.push('-f', format)
+      // Video format with audio merged - add robust fallbacks
+      // Parse the format to add fallbacks if not already present
+      let robustFormat = format
+
+      // If format contains height constraint but no proper fallback, add them
+      if (format.includes('height<=') && !format.includes('bestvideo+bestaudio/best')) {
+        // Add fallback chain: original -> any video+audio -> combined best
+        robustFormat = `${format}/bestvideo+bestaudio/best`
+      } else if (format === 'bestvideo+bestaudio/best') {
+        // Already has best fallback, add intermediate fallback
+        robustFormat = 'bestvideo+bestaudio/bestvideo[ext=mp4]+bestaudio[ext=m4a]/best'
+      }
+
+      args.push('-f', robustFormat)
       args.push('--merge-output-format', 'mp4')
+
+      logger.info('Using format selector', robustFormat)
     }
 
     // Subtitle options
@@ -535,9 +574,18 @@ export class Downloader extends EventEmitter {
     return new Promise((resolve, reject) => {
       this.currentProcess = spawn(this.ytdlpPath, args)
 
-      let currentFile = ''
-      let currentIndex = 0
+      let currentFile = contentInfo.title || 'Unknown'
+      let currentIndex = 1
       const totalFiles = contentInfo.videoCount || 1
+
+      // Emit initial progress immediately so UI shows progress bar
+      this.emit('progress', {
+        percent: 0,
+        currentFile,
+        currentIndex,
+        totalFiles,
+        status: 'downloading',
+      })
 
       this.currentProcess.stdout?.on('data', (data) => {
         if (this.cancelled) return

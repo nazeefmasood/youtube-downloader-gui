@@ -157,6 +157,7 @@ export function createHttpServer(queueManager: QueueManager): http.Server {
               quality: f.quality,
               ext: f.ext,
               isAudioOnly: f.isAudioOnly,
+              filesize: f.filesize,
             })),
           })
         } catch (error) {

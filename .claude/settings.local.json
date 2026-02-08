@@ -31,7 +31,9 @@
       "Bash(fuser:*)",
       "Bash(kill:*)",
       "WebSearch",
-      "WebFetch(domain:github.com)"
+      "WebFetch(domain:github.com)",
+      "Bash(~/.config/vidgrab/binaries/yt-dlp-linux_2024.12.23:*)",
+      "Bash(~/.config/vidgrab/binaries/yt-dlp-linux_2025.12.08:*)"
     ]
   }
 }

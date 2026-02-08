@@ -1263,7 +1263,7 @@ body,
 
 .video-list-duration {
   font-size: 10px;
-  color: var(--text-muted);
+  color: var(--text-secondary);
   margin-top: 2px;
 }
 
@@ -2894,7 +2894,8 @@ body,
 }
 
 .queue-btn-cancel,
-.queue-btn-remove {
+.queue-btn-remove,
+.queue-btn-retry {
   width: 28px;
   height: 28px;
   display: flex;
@@ -2915,6 +2916,32 @@ body,
 .queue-btn-remove:hover {
   border-color: var(--text-secondary);
   color: var(--text-secondary);
+}
+
+.queue-btn-retry:hover {
+  border-color: var(--accent);
+  color: var(--accent);
+}
+
+.btn-retry-all {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 12px;
+  background: transparent;
+  border: 1px solid var(--warning);
+  color: var(--warning);
+  font-family: inherit;
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.1em;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.btn-retry-all:hover {
+  background: var(--warning);
+  color: var(--bg-primary);
 }
 
 /* Spin animation for loading icon */

@@ -5,8 +5,8 @@ import { app, BrowserWindow } from 'electron'
 import { execSync } from 'child_process'
 import { logger } from './logger'
 
-// Latest version with critical YouTube fixes (bot detection, player clients, format handling)
-const YTDLP_VERSION = '2026.01.31'
+// Using latest stable version
+const YTDLP_VERSION = '2025.12.08'
 
 interface BinaryInfo {
   name: string
@@ -309,6 +309,102 @@ export class BinaryManager {
 
     // Default to userData path (whether it exists or not)
     return path.join(this.userDataPath, binary.name)
+  }
+
+  // Check if ffmpeg is available (either from ffmpeg-static or system)
+  checkFfmpeg(): { available: boolean; path: string | null; version: string | null } {
+    // First try ffmpeg-static (bundled)
+    try {
+      // eslint-disable-next-line @typescript-eslint/no-require-imports
+      const ffmpegStatic = require('ffmpeg-static')
+      if (ffmpegStatic && fs.existsSync(ffmpegStatic)) {
+        try {
+          const version = execSync(`"${ffmpegStatic}" -version`, { timeout: 10000 })
+            .toString()
+            .split('\n')[0]
+            .trim()
+          logger.info('ffmpeg-static found', `Path: ${ffmpegStatic}, Version: ${version}`)
+          return { available: true, path: ffmpegStatic, version }
+        } catch (versionErr) {
+          logger.warn('ffmpeg-static exists but failed version check', versionErr instanceof Error ? versionErr.message : String(versionErr))
+        }
+      }
+    } catch (requireErr) {
+      logger.info('ffmpeg-static not available, checking system ffmpeg')
+    }
+
+    // Fall back to system ffmpeg
+    try {
+      const version = execSync('ffmpeg -version', { timeout: 10000 })
+        .toString()
+        .split('\n')[0]
+        .trim()
+      logger.info('System ffmpeg found', version)
+      return { available: true, path: 'ffmpeg', version }
+    } catch (systemErr) {
+      logger.warn('System ffmpeg not found', systemErr instanceof Error ? systemErr.message : String(systemErr))
+    }
+
+    logger.error('No ffmpeg available', 'Neither ffmpeg-static nor system ffmpeg found')
+    return { available: false, path: null, version: null }
+  }
+
+  // Check if ffprobe is available
+  checkFfprobe(): { available: boolean; path: string | null } {
+    // First try ffprobe-static (bundled)
+    try {
+      // eslint-disable-next-line @typescript-eslint/no-require-imports
+      const ffprobeStatic = require('ffprobe-static')
+      if (ffprobeStatic && ffprobeStatic.path && fs.existsSync(ffprobeStatic.path)) {
+        logger.info('ffprobe-static found', ffprobeStatic.path)
+        return { available: true, path: ffprobeStatic.path }
+      }
+    } catch (requireErr) {
+      logger.info('ffprobe-static not available, checking system ffprobe')
+    }
+
+    // Fall back to system ffprobe
+    try {
+      execSync('ffprobe -version', { timeout: 10000 })
+      logger.info('System ffprobe found')
+      return { available: true, path: 'ffprobe' }
+    } catch (systemErr) {
+      logger.warn('System ffprobe not found')
+    }
+
+    return { available: false, path: null }
+  }
+
+  // Get all binary status for the UI
+  getBinaryStatus(): {
+    ytdlp: { installed: boolean; version: string | null; path: string | null }
+    ffmpeg: { available: boolean; version: string | null; path: string | null }
+    ffprobe: { available: boolean; path: string | null }
+  } {
+    const ytdlpPath = this.getBinaryPath()
+    let ytdlpVersion: string | null = null
+    const ytdlpInstalled = this.isBinaryInstalled()
+
+    if (ytdlpInstalled) {
+      try {
+        ytdlpVersion = execSync(`"${ytdlpPath}" --version`, { timeout: 10000 }).toString().trim()
+      } catch {
+        ytdlpVersion = null
+      }
+    }
+
+    const ffmpegStatus = this.checkFfmpeg()
+    const ffprobeStatus = this.checkFfprobe()
+
+    return {
+      ytdlp: {
+        installed: ytdlpInstalled,
+        version: ytdlpVersion,
+        path: ytdlpInstalled ? ytdlpPath : null,
+      },
+      ffmpeg: ffmpegStatus,
+      ffprobe: ffprobeStatus,
+    }
   }
 }
 

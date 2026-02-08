@@ -173,6 +173,8 @@ export interface ElectronAPI {
   pauseQueue: () => Promise<void>
   resumeQueue: () => Promise<void>
   clearQueue: () => Promise<void>
+  retryQueueItem: (id: string) => Promise<boolean>
+  retryAllFailed: () => Promise<number>
   onQueueUpdate: (callback: (status: QueueStatus) => void) => () => void
 
   // Logger operations
@@ -182,6 +184,11 @@ export interface ElectronAPI {
   // Binary management
   checkBinary: () => Promise<boolean>
   downloadBinary: () => Promise<boolean>
+  getBinaryStatus: () => Promise<{
+    ytdlp: { installed: boolean; version: string | null; path: string | null }
+    ffmpeg: { available: boolean; version: string | null; path: string | null }
+    ffprobe: { available: boolean; path: string | null }
+  }>
   onBinaryDownloadStart: (callback: (data: { name: string }) => void) => () => void
   onBinaryDownloadProgress: (callback: (data: { percent: number; downloaded: number; total: number }) => void) => () => void
   onBinaryDownloadComplete: (callback: (data: { path: string }) => void) => () => void

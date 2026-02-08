@@ -461,6 +461,16 @@ ipcMain.handle('queue:clear', () => {
   queueManager.clear()
 })
 
+ipcMain.handle('queue:retry', (_event, id: string) => {
+  if (!queueManager) throw new Error('Queue manager not initialized')
+  return queueManager.retryItem(id)
+})
+
+ipcMain.handle('queue:retryAllFailed', () => {
+  if (!queueManager) throw new Error('Queue manager not initialized')
+  return queueManager.retryAllFailed()
+})
+
 // Logger IPC handlers
 ipcMain.handle('logger:getErrors', () => {
   return logger.getRecentErrors()
@@ -480,4 +490,8 @@ ipcMain.handle('binary:check', () => {
 
 ipcMain.handle('binary:download', async () => {
   return await binaryManager.downloadBinary(mainWindow)
+})
+
+ipcMain.handle('binary:status', () => {
+  return binaryManager.getBinaryStatus()
 })
