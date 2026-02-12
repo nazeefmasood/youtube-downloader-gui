@@ -66,6 +66,7 @@ interface SubtitleOptions {
 
 interface DownloadOptions {
   url: string
+  title?: string
   format: string
   audioOnly?: boolean
   outputPath: string
@@ -332,61 +333,88 @@ export class Downloader extends EventEmitter {
     }
 
     const formats: VideoFormat[] = []
-    const seenQualities = new Set<string>()
 
     const allFormats = info.formats || []
 
-    // Find best video and audio formats for filesize estimation
-    const bestVideoFormat = allFormats.find((f: Record<string, unknown>) =>
-      f.vcodec && f.vcodec !== 'none' && f.height
+    // Collect all video formats with their heights
+    const videoFormats = allFormats.filter((f: Record<string, unknown>) =>
+      f.vcodec && f.vcodec !== 'none' && typeof f.height === 'number' && (f.height as number) > 0
     )
-    const bestAudioFormat = allFormats.find((f: Record<string, unknown>) =>
+    const audioFormats = allFormats.filter((f: Record<string, unknown>) =>
       f.acodec && f.acodec !== 'none' && (!f.vcodec || f.vcodec === 'none')
     )
-    const bestTotalSize = ((bestVideoFormat?.filesize as number) || 0) + ((bestAudioFormat?.filesize as number) || 0)
 
-    // Add "Best Quality" option first - downloads highest available quality
+    // Find the maximum available height
+    const maxHeight = videoFormats.reduce((max: number, f: Record<string, unknown>) =>
+      Math.max(max, f.height as number), 0
+    )
+
+    // Best audio format for size estimation (pick the last/best one)
+    const bestAudioFormat = audioFormats.length > 0 ? audioFormats[audioFormats.length - 1] : null
+    const bestAudioSize = (bestAudioFormat?.filesize as number) || 0
+
+    // Best video format for "Best Quality" size estimation
+    const bestVideoFormat = videoFormats.length > 0 ? videoFormats[videoFormats.length - 1] : null
+    const bestTotalSize = ((bestVideoFormat?.filesize as number) || 0) + bestAudioSize
+
+    logger.info('Format detection', `Max height: ${maxHeight}p, Video formats: ${videoFormats.length}, Audio formats: ${audioFormats.length}`)
+
+    // Determine the best quality label based on max height
+    const bestLabel = maxHeight >= 4320 ? '8K'
+      : maxHeight >= 2160 ? '4K'
+      : maxHeight >= 1440 ? '1440p'
+      : maxHeight >= 1080 ? '1080p'
+      : maxHeight >= 720 ? '720p'
+      : maxHeight >= 480 ? '480p'
+      : `${maxHeight}p`
+
+    // Add "Best Quality" option first showing actual max resolution
     formats.push({
       formatId: 'bestvideo+bestaudio/best',
       ext: 'mp4',
       resolution: 'best',
-      quality: 'Best Quality',
+      quality: `Best Quality (${bestLabel})`,
       filesize: bestTotalSize > 0 ? bestTotalSize : undefined,
       isAudioOnly: false,
     })
 
-    // Add combined format options (these are what most users want)
-    // Include 8K (4320p) and other high resolutions
-    // Use fallback to 'best' without height constraint to avoid "format not available" errors
-    const qualities = ['4320', '2160', '1440', '1080', '720', '480', '360']
+    // Always show all standard quality options up to the max available height
+    // yt-dlp's format string handles fallback automatically
+    // e.g. "bestvideo[height<=1080]" will pick the best format at or below 1080p
+    const qualities: Array<{ height: number; label: string }> = [
+      { height: 4320, label: '8K' },
+      { height: 2160, label: '4K' },
+      { height: 1440, label: '1440p' },
+      { height: 1080, label: '1080p' },
+      { height: 720, label: '720p' },
+      { height: 480, label: '480p' },
+      { height: 360, label: '360p' },
+    ]
+
     for (const q of qualities) {
-      const hasQuality = allFormats.some((f: Record<string, unknown>) =>
-        f.height === parseInt(q) && f.vcodec && f.vcodec !== 'none'
-      )
-      if (hasQuality) {
-        const label = q === '4320' ? '8K' : q === '2160' ? '4K' : `${q}p`
-        // Get estimated filesize for this quality
-        const videoFormat = allFormats.find((f: Record<string, unknown>) =>
-          f.height === parseInt(q) && f.vcodec && f.vcodec !== 'none'
-        )
-        const audioFormat = allFormats.find((f: Record<string, unknown>) =>
-          f.acodec && f.acodec !== 'none' && (!f.vcodec || f.vcodec === 'none')
-        )
-        const estimatedSize = ((videoFormat?.filesize as number) || 0) + ((audioFormat?.filesize as number) || 0)
+      // Show this quality option if the video has formats at or above this height
+      if (maxHeight >= q.height) {
+        // Find the closest video format for filesize estimation
+        // Look for exact match first, then closest match at or below this height
+        const exactMatch = videoFormats.find((f: Record<string, unknown>) => f.height === q.height)
+        const closestMatch = exactMatch || videoFormats
+          .filter((f: Record<string, unknown>) => (f.height as number) <= q.height)
+          .pop()
+        const estimatedVideoSize = (closestMatch?.filesize as number) || 0
+        const estimatedSize = estimatedVideoSize + bestAudioSize
 
         formats.push({
-          formatId: `bestvideo[height<=${q}]+bestaudio/best`,
+          formatId: `bestvideo[height<=${q.height}]+bestaudio/best`,
           ext: 'mp4',
-          resolution: `${q}p`,
-          quality: label,
+          resolution: `${q.height}p`,
+          quality: q.label,
           filesize: estimatedSize > 0 ? estimatedSize : undefined,
           isAudioOnly: false,
         })
-        seenQualities.add(q)
       }
     }
 
-    // Add audio-only options with filesize estimation
+    // Add audio-only options
     const audioSize = (bestAudioFormat?.filesize as number) || undefined
     formats.push({
       formatId: 'bestaudio/best',
@@ -397,7 +425,6 @@ export class Downloader extends EventEmitter {
       isAudioOnly: true,
     })
 
-    // Find m4a specific format for better filesize
     const m4aFormat = allFormats.find((f: Record<string, unknown>) =>
       f.ext === 'm4a' && f.acodec && f.acodec !== 'none'
     )
@@ -475,19 +502,13 @@ export class Downloader extends EventEmitter {
   }
 
   async download(options: DownloadOptions): Promise<void> {
-    const { url, format, audioOnly, outputPath, organizeByType, delayBetweenDownloads = 2000, subtitleOptions } = options
+    const { url, title, format, audioOnly, outputPath, organizeByType, delayBetweenDownloads = 2000, subtitleOptions } = options
     this.cancelled = false
 
-    const contentInfo = await this.detectUrl(url)
+    // Use provided title instead of re-detecting (avoids 403 errors and unnecessary API calls)
+    const videoTitle = title || 'Unknown'
 
-    let outputDir = outputPath
-    if (organizeByType) {
-      if (contentInfo.type === 'playlist') {
-        outputDir = path.join(outputPath, 'Playlists', this.sanitizeFilename(contentInfo.title))
-      } else if (contentInfo.type === 'channel') {
-        outputDir = path.join(outputPath, 'Channels', this.sanitizeFilename(contentInfo.title))
-      }
-    }
+    const outputDir = outputPath
 
     fs.mkdirSync(outputDir, { recursive: true })
 
@@ -495,6 +516,8 @@ export class Downloader extends EventEmitter {
       '--no-warnings',
       '--newline',
       '--progress',
+      // Use multi-client approach to avoid bot detection
+      '--extractor-args', 'youtube:player_client=default,web_creator,mweb,android',
       // Retry options for handling 403 errors and network issues
       '--retries', '10',
       '--fragment-retries', '10',
@@ -505,26 +528,25 @@ export class Downloader extends EventEmitter {
       '--socket-timeout', '30',
       // Use native HLS downloader for better m3u8 handling
       '--hls-prefer-native',
-      // Use cookies from browser to bypass 403 errors during download
-      // This is safe here because we already detected formats without cookies
-      '--cookies-from-browser', 'chrome',
       // FFmpeg location
       '--ffmpeg-location', this.ffmpegPath,
     ]
-    logger.info('Using cookies from Chrome for download')
 
-    // Output template
-    if (contentInfo.type === 'playlist') {
-      args.push('-o', path.join(outputDir, '%(playlist_index)02d - %(title)s.%(ext)s'))
-      // Add delay between downloads for playlists
-      args.push('--sleep-interval', String(Math.floor(delayBetweenDownloads / 1000)))
-      args.push('--max-sleep-interval', String(Math.floor(delayBetweenDownloads / 1000) + 2))
-    } else {
-      args.push('-o', path.join(outputDir, '%(title)s.%(ext)s'))
-    }
+    // NOTE: Do NOT use --cookies-from-browser chrome here.
+    // Cookies cause yt-dlp to select premium/HLS formats (e.g. format 96)
+    // that return 403 Forbidden on fragments, resulting in "downloaded file is empty".
+    // The multi-client extractor-args above are sufficient for bot detection bypass.
+
+    // Output template - items are queued individually, so always single video template
+    args.push('-o', path.join(outputDir, '%(title)s.%(ext)s'))
+    args.push('--no-playlist')
 
     // Format selection - IMPORTANT: merge into single file with robust fallbacks
-    if (audioOnly) {
+    if (format === 'subtitle-only') {
+      // Subtitle-only download - skip the video
+      args.push('--skip-download')
+      logger.info('Subtitle-only download mode')
+    } else if (audioOnly) {
       // Audio-only download with fallbacks
       args.push('-f', 'bestaudio/best')
       args.push('-x') // Extract audio
@@ -574,9 +596,10 @@ export class Downloader extends EventEmitter {
     return new Promise((resolve, reject) => {
       this.currentProcess = spawn(this.ytdlpPath, args)
 
-      let currentFile = contentInfo.title || 'Unknown'
-      let currentIndex = 1
-      const totalFiles = contentInfo.videoCount || 1
+      let currentFile = videoTitle
+      const currentIndex = 1
+      const totalFiles = 1
+      let stderrOutput = ''
 
       // Emit initial progress immediately so UI shows progress bar
       this.emit('progress', {
@@ -626,66 +649,21 @@ export class Downloader extends EventEmitter {
           if (destMatch) {
             currentFile = path.basename(destMatch[1])
           }
-
-          // Downloading item X of Y
-          const itemMatch = line.match(/\[download\]\s+Downloading\s+(?:video|item)\s+(\d+)\s+of\s+(\d+)/)
-          if (itemMatch) {
-            const newIndex = parseInt(itemMatch[1])
-            // Emit videoComplete for previous video when starting a new one
-            if (newIndex > currentIndex && currentFile) {
-              this.emit('videoComplete', {
-                index: currentIndex,
-                totalFiles,
-                title: currentFile.replace(/\.[^/.]+$/, ''), // Remove extension
-                filePath: path.join(outputDir, currentFile),
-              })
-            }
-            currentIndex = newIndex
-            // Emit waiting status before starting next download
-            if (currentIndex > 1) {
-              this.emit('progress', {
-                percent: 0,
-                currentFile: '',
-                currentIndex,
-                totalFiles,
-                status: 'waiting',
-              })
-            }
-          }
-
-          // Already downloaded - also emit videoComplete
-          if (line.includes('has already been downloaded')) {
-            const alreadyMatch = line.match(/\[download\]\s+(.+)\s+has already been downloaded/)
-            if (alreadyMatch) {
-              this.emit('videoComplete', {
-                index: currentIndex,
-                totalFiles,
-                title: path.basename(alreadyMatch[1]).replace(/\.[^/.]+$/, ''),
-                filePath: alreadyMatch[1],
-                alreadyDownloaded: true,
-              })
-            }
-            currentIndex++
-          }
         }
       })
 
       this.currentProcess.stderr?.on('data', (data) => {
         const output = data.toString()
+        stderrOutput += output
 
         // Log all stderr output for debugging
         logger.info('yt-dlp stderr', output.trim())
 
         // Detect specific error types for better user feedback
-        if (output.includes('downloaded file is empty')) {
-          logger.error('Empty file error detected', 'This may be due to bot detection or format issues. Trying with cookies and protocol preferences.')
-        }
-
         if (output.includes('Sign in to confirm') || output.includes('bot')) {
-          logger.warn('Bot detection warning', 'YouTube may be blocking the download. Using browser cookies may help.')
+          logger.warn('Bot detection warning', 'YouTube may be blocking the download')
         }
 
-        // Check for cookie errors and continue without cookies
         if (output.includes('cookies') && output.includes('error')) {
           logger.warn('Cookie extraction failed', 'Continuing without cookies')
         }
@@ -698,26 +676,24 @@ export class Downloader extends EventEmitter {
           this.emit('complete', { success: false, error: 'Download cancelled' })
           resolve()
         } else if (code === 0) {
-          // Emit videoComplete for the last video (for playlists/channels)
-          if (currentFile && totalFiles > 1) {
-            this.emit('videoComplete', {
-              index: currentIndex || totalFiles,
-              totalFiles,
-              title: currentFile.replace(/\.[^/.]+$/, ''),
-              filePath: path.join(outputDir, currentFile),
-            })
-          }
           this.emit('progress', {
             percent: 100,
             currentFile,
-            currentIndex: totalFiles,
-            totalFiles,
+            currentIndex: 1,
+            totalFiles: 1,
             status: 'complete',
           })
           this.emit('complete', { success: true, filePath: outputDir })
           resolve()
         } else {
-          const error = `Download failed with code ${code}`
+          // Extract meaningful error from stderr
+          const stderrLines = stderrOutput.trim().split('\n').filter(l => l.trim())
+          const errorLine = stderrLines.find(l =>
+            l.includes('ERROR') || l.includes('HTTP Error') || l.includes('Forbidden') ||
+            l.includes('Sign in') || l.includes('not available') || l.includes('Unable to')
+          ) || stderrLines[stderrLines.length - 1] || ''
+          const error = errorLine.replace(/^.*?ERROR:\s*/, '').trim() || `Download failed with code ${code}`
+          logger.error('Download failed', `Code: ${code}\nStderr: ${stderrOutput.trim().slice(0, 500)}`)
           this.emit('complete', { success: false, error })
           reject(new Error(error))
         }

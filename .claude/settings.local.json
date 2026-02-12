@@ -33,7 +33,10 @@
       "WebSearch",
       "WebFetch(domain:github.com)",
       "Bash(~/.config/vidgrab/binaries/yt-dlp-linux_2024.12.23:*)",
-      "Bash(~/.config/vidgrab/binaries/yt-dlp-linux_2025.12.08:*)"
+      "Bash(~/.config/vidgrab/binaries/yt-dlp-linux_2025.12.08:*)",
+      "Bash(npm start)",
+      "Bash(/home/personal/.config/vidgrab/binaries/yt-dlp-linux_2025.12.08:*)",
+      "Bash(/home/personal/.config/vidgrab/binaries/yt-dlp-linux_2026.02.04:*)"
     ]
   }
 }

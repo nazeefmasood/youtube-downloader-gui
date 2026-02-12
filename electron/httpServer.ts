@@ -197,6 +197,8 @@ export function createHttpServer(queueManager: QueueManager): http.Server {
           format,
           audioOnly,
           source: 'extension',
+          sourceType: 'single',
+          contentType: audioOnly ? 'audio' : 'video',
         })
 
         sendJson(res, result)

@@ -96,11 +96,15 @@ export interface QueueItem {
   title: string
   thumbnail?: string
   format: string
+  qualityLabel?: string
   audioOnly: boolean
   status: 'pending' | 'downloading' | 'completed' | 'failed' | 'cancelled' | 'paused'
   progress?: DownloadProgress
   addedAt: number
   source: 'app' | 'extension'
+  sourceType?: 'single' | 'playlist' | 'channel'
+  contentType?: 'video' | 'audio' | 'subtitle' | 'video+sub'
+  subtitleOptions?: SubtitleOptions
   error?: string
 }
 
@@ -167,9 +171,22 @@ export interface ElectronAPI {
 
   // Queue operations
   getQueue: () => Promise<QueueStatus>
-  addToQueue: (item: { url: string; title: string; thumbnail?: string; format: string; audioOnly: boolean; source: 'app' | 'extension' }) => Promise<{ id: string; position: number }>
+  addToQueue: (item: {
+    url: string
+    title: string
+    thumbnail?: string
+    format: string
+    qualityLabel?: string
+    audioOnly: boolean
+    source: 'app' | 'extension'
+    sourceType?: 'single' | 'playlist' | 'channel'
+    contentType?: 'video' | 'audio' | 'subtitle' | 'video+sub'
+    subtitleOptions?: SubtitleOptions
+  }) => Promise<{ id: string; position: number }>
   removeFromQueue: (id: string) => Promise<void>
   cancelQueueItem: (id: string) => Promise<void>
+  pauseQueueItem: (id: string) => Promise<boolean>
+  resumeQueueItem: (id: string) => Promise<boolean>
   pauseQueue: () => Promise<void>
   resumeQueue: () => Promise<void>
   clearQueue: () => Promise<void>

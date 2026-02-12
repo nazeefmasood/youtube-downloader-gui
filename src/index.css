@@ -2806,17 +2806,60 @@ body,
   color: var(--text-muted);
 }
 
-.queue-item-source {
+.queue-item-tag {
   font-weight: 700;
-  padding: 1px 4px;
-  background: var(--bg-tertiary);
+  padding: 1px 5px;
   border-radius: 2px;
+  font-size: 9px;
+  letter-spacing: 0.05em;
+}
+
+.queue-item-tag.tag-type {
+  border: 1px solid;
+}
+
+.queue-item-tag.tag-type.video {
+  color: var(--accent);
+  border-color: var(--accent);
+  background: rgba(0, 255, 136, 0.08);
+}
+
+.queue-item-tag.tag-type.audio {
+  color: #7c6eff;
+  border-color: #7c6eff;
+  background: rgba(124, 110, 255, 0.08);
+}
+
+.queue-item-tag.tag-type.subtitle {
+  color: #ffaa00;
+  border-color: #ffaa00;
+  background: rgba(255, 170, 0, 0.08);
+}
+
+.queue-item-tag.tag-type.video\+sub {
+  color: #00bbff;
+  border-color: #00bbff;
+  background: rgba(0, 187, 255, 0.08);
+}
+
+.queue-item-tag.tag-source {
+  background: var(--bg-tertiary);
   color: var(--text-secondary);
 }
 
-.queue-item-format {
-  font-weight: 600;
-  color: var(--accent);
+.queue-item-tag.tag-source.ext {
+  color: #ff6b9d;
+  background: rgba(255, 107, 157, 0.1);
+}
+
+.queue-item-tag.tag-source.playlist {
+  color: #ffaa00;
+  background: rgba(255, 170, 0, 0.08);
+}
+
+.queue-item-tag.tag-source.channel {
+  color: #ff6b6b;
+  background: rgba(255, 107, 107, 0.08);
 }
 
 .queue-item-progress {
@@ -2895,7 +2938,9 @@ body,
 
 .queue-btn-cancel,
 .queue-btn-remove,
-.queue-btn-retry {
+.queue-btn-retry,
+.queue-btn-pause,
+.queue-btn-resume {
   width: 28px;
   height: 28px;
   display: flex;
@@ -2919,6 +2964,16 @@ body,
 }
 
 .queue-btn-retry:hover {
+  border-color: var(--accent);
+  color: var(--accent);
+}
+
+.queue-btn-pause:hover {
+  border-color: var(--warning);
+  color: var(--warning);
+}
+
+.queue-btn-resume:hover {
   border-color: var(--accent);
   color: var(--accent);
 }
@@ -3582,6 +3637,35 @@ body,
   text-align: center;
 }
 
+.btn-subtitle-only {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  width: 100%;
+  padding: 8px 12px;
+  margin-top: 8px;
+  background: transparent;
+  border: 1px solid var(--warning);
+  color: var(--warning);
+  font-family: inherit;
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.1em;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.btn-subtitle-only:hover:not(:disabled) {
+  background: var(--warning);
+  color: var(--bg-primary);
+}
+
+.btn-subtitle-only:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
 /* ============================================
    DOWNLOADS TAB STYLES
    ============================================ */
@@ -3651,14 +3735,19 @@ body,
 .download-progress-bar {
   padding: 12px 16px;
   background: var(--bg-tertiary);
-  border-bottom: 1px solid var(--border);
-  animation: fadeInDown 0.3s ease-out;
+  border-top: 1px solid var(--border);
+  flex-shrink: 0;
+  animation: fadeInUp 0.3s ease-out;
 }
 
 .queue-content {
   flex: 1;
   overflow-y: auto;
   min-height: 0;
+}
+
+.queue-content.has-progress-bar .queue-list {
+  padding-bottom: 8px;
 }
 
 .queue-content .empty-state {

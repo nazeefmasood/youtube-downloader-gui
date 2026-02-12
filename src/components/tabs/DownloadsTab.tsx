@@ -56,6 +56,14 @@ export function DownloadsTab({ queueStatus, downloadProgress }: DownloadsTabProp
     window.electronAPI.retryAllFailed()
   }, [])
 
+  const handlePauseItem = useCallback((id: string) => {
+    window.electronAPI.pauseQueueItem(id)
+  }, [])
+
+  const handleResumeItem = useCallback((id: string) => {
+    window.electronAPI.resumeQueueItem(id)
+  }, [])
+
   const getQueueStatusIcon = (status: QueueItem['status']) => {
     switch (status) {
       case 'pending':
@@ -198,35 +206,8 @@ export function DownloadsTab({ queueStatus, downloadProgress }: DownloadsTabProp
         </button>
       </div>
 
-      {/* Progress Bar when downloading */}
-      {queueStatus.isProcessing && effectiveProgress && (
-        <div className="download-progress-bar">
-          <div className="progress-info">
-            <span className="progress-label">
-              {effectiveProgress.status === 'downloading' && 'DOWNLOADING'}
-              {effectiveProgress.status === 'merging' && 'MERGING'}
-              {effectiveProgress.status === 'processing' && 'PROCESSING'}
-              {effectiveProgress.status === 'waiting' && 'WAITING'}
-            </span>
-            <span className="progress-percent">{effectiveProgress.percent?.toFixed(0) || 0}%</span>
-          </div>
-          <div className="progress-bar">
-            <div className="progress-bar-bg" />
-            <div className="progress-fill" style={{ width: `${effectiveProgress.percent || 0}%` }} />
-          </div>
-          <div className="progress-stats-compact">
-            <span><strong>{effectiveProgress.speed || '--'}</strong> Speed</span>
-            <span><strong>{effectiveProgress.eta || '--'}</strong> ETA</span>
-            <span><strong>{effectiveProgress.total || '--'}</strong> Size</span>
-            {currentQueueItem && (
-              <span className="progress-title-compact">{currentQueueItem.title}</span>
-            )}
-          </div>
-        </div>
-      )}
-
       {/* Queue List */}
-      <div className="queue-content">
+      <div className={`queue-content ${queueStatus.isProcessing && effectiveProgress ? 'has-progress-bar' : ''}`}>
         {filteredItems.length === 0 ? (
           <div className="empty-state">
             <div className="empty-state-icon">
@@ -265,8 +246,22 @@ export function DownloadsTab({ queueStatus, downloadProgress }: DownloadsTabProp
                 <div className="queue-item-info">
                   <div className="queue-item-title">{item.title}</div>
                   <div className="queue-item-meta">
-                    <span className="queue-item-source">{item.source === 'extension' ? 'EXT' : 'APP'}</span>
-                    <span className="queue-item-format">{item.audioOnly ? 'AUDIO' : 'VIDEO'}</span>
+                    {/* Content type + quality tag */}
+                    <span className={`queue-item-tag tag-type ${item.contentType || (item.audioOnly ? 'audio' : 'video')}`}>
+                      {item.contentType === 'subtitle' ? 'SUBTITLE'
+                        : item.contentType === 'video+sub'
+                          ? `VIDEO+SUB${item.qualityLabel ? ` ${item.qualityLabel}` : ''}`
+                        : item.contentType === 'audio' || item.audioOnly
+                          ? `AUDIO${item.qualityLabel ? ` ${item.qualityLabel}` : ''}`
+                          : `VIDEO${item.qualityLabel ? ` ${item.qualityLabel}` : ''}`}
+                    </span>
+                    {/* Source tag */}
+                    <span className={`queue-item-tag tag-source ${item.source === 'extension' ? 'ext' : (item.sourceType || 'single')}`}>
+                      {item.source === 'extension' ? 'EXTENSION'
+                        : item.sourceType === 'playlist' ? 'PLAYLIST'
+                        : item.sourceType === 'channel' ? 'CHANNEL'
+                        : 'SINGLE'}
+                    </span>
                     <span className="queue-item-time">{formatTime(item.addedAt)}</span>
                   </div>
                   {item.status === 'failed' && item.error && (
@@ -282,6 +277,34 @@ export function DownloadsTab({ queueStatus, downloadProgress }: DownloadsTabProp
                 </div>
 
                 <div className="queue-item-actions">
+                  {/* Pause button for active/pending items */}
+                  {(item.status === 'downloading' || item.status === 'pending') && (
+                    <button
+                      type="button"
+                      className="queue-btn-pause"
+                      onClick={() => handlePauseItem(item.id)}
+                      title="Pause"
+                    >
+                      <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor">
+                        <rect x="6" y="4" width="4" height="16" />
+                        <rect x="14" y="4" width="4" height="16" />
+                      </svg>
+                    </button>
+                  )}
+                  {/* Resume button for paused items */}
+                  {item.status === 'paused' && (
+                    <button
+                      type="button"
+                      className="queue-btn-resume"
+                      onClick={() => handleResumeItem(item.id)}
+                      title="Resume"
+                    >
+                      <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor">
+                        <polygon points="5 3 19 12 5 21 5 3" />
+                      </svg>
+                    </button>
+                  )}
+                  {/* Cancel button */}
                   {(item.status === 'pending' || item.status === 'downloading' || item.status === 'paused') && (
                     <button
                       type="button"
@@ -294,6 +317,7 @@ export function DownloadsTab({ queueStatus, downloadProgress }: DownloadsTabProp
                       </svg>
                     </button>
                   )}
+                  {/* Retry button for failed/cancelled */}
                   {(item.status === 'failed' || item.status === 'cancelled') && (
                     <button
                       type="button"
@@ -307,6 +331,7 @@ export function DownloadsTab({ queueStatus, downloadProgress }: DownloadsTabProp
                       </svg>
                     </button>
                   )}
+                  {/* Remove button for finished items */}
                   {(item.status === 'completed' || item.status === 'failed' || item.status === 'cancelled') && (
                     <button
                       type="button"
@@ -326,6 +351,33 @@ export function DownloadsTab({ queueStatus, downloadProgress }: DownloadsTabProp
           </div>
         )}
       </div>
+
+      {/* Fixed Progress Bar at Bottom */}
+      {queueStatus.isProcessing && effectiveProgress && (
+        <div className="download-progress-bar">
+          <div className="progress-info">
+            <span className="progress-label">
+              {effectiveProgress.status === 'downloading' && 'DOWNLOADING'}
+              {effectiveProgress.status === 'merging' && 'MERGING'}
+              {effectiveProgress.status === 'processing' && 'PROCESSING'}
+              {effectiveProgress.status === 'waiting' && 'WAITING'}
+            </span>
+            <span className="progress-percent">{effectiveProgress.percent?.toFixed(0) || 0}%</span>
+          </div>
+          <div className="progress-bar">
+            <div className="progress-bar-bg" />
+            <div className="progress-fill" style={{ width: `${effectiveProgress.percent || 0}%` }} />
+          </div>
+          <div className="progress-stats-compact">
+            <span><strong>{effectiveProgress.speed || '--'}</strong> Speed</span>
+            <span><strong>{effectiveProgress.eta || '--'}</strong> ETA</span>
+            <span><strong>{effectiveProgress.total || '--'}</strong> Size</span>
+            {currentQueueItem && (
+              <span className="progress-title-compact">{currentQueueItem.title}</span>
+            )}
+          </div>
+        </div>
+      )}
     </div>
   )
 }

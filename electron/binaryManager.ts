@@ -6,7 +6,7 @@ import { execSync } from 'child_process'
 import { logger } from './logger'
 
 // Using latest stable version
-const YTDLP_VERSION = '2025.12.08'
+const YTDLP_VERSION = '2026.02.04'
 
 interface BinaryInfo {
   name: string
