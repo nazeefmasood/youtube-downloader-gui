@@ -37,8 +37,12 @@
         "*://m.youtube.com/*",
         "*://music.youtube.com/*"
       ],
-      "js": ["content/content-script.js"],
-      "css": ["content/styles.css"],
+      "js": [
+        "content/content-script.js"
+      ],
+      "css": [
+        "content/styles.css"
+      ],
       "run_at": "document_idle"
     }
   ]

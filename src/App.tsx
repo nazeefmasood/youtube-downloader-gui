@@ -1,4 +1,5 @@
 import { useState, useEffect, useCallback } from "react";
+import { APP_VERSION } from "./version";
 import { useDownloadStore } from "./stores/downloadStore";
 import { AnalyzeTab } from "./components/tabs/AnalyzeTab";
 import { DownloadsTab } from "./components/tabs/DownloadsTab";
@@ -429,7 +430,7 @@ function App() {
           </svg>
           <span>VIDGRAB</span>
           <span style={{ color: "var(--text-muted)", fontWeight: 400 }}>
-            v1.0.0
+            v{APP_VERSION}
           </span>
         </div>
         <div className="title-bar-controls">
@@ -870,7 +871,7 @@ function App() {
                 <div className="setting-info">
                   <div className="setting-label">VidGrab</div>
                   <div className="setting-description">
-                    Version 1.0.0 // Powered by yt-dlp
+                    Version {APP_VERSION} // Powered by yt-dlp
                   </div>
                 </div>
               </div>
