@@ -1,0 +1,156 @@
+name: Build and Release
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: ${{ matrix.os }}
+    strategy:
+      matrix:
+        include:
+          - os: ubuntu-latest
+            artifact: VidGrab-${{ github.ref_name }}.AppImage
+            artifact2: vidgrab_${{ github.ref_name }}_amd64.deb
+            build_cmd: npm run build:linux
+          - os: windows-latest
+            artifact: VidGrab Setup ${{ github.ref_name }}.exe
+            build_cmd: npm run build:win
+          - os: macos-latest
+            artifact: VidGrab-${{ github.ref_name }}-mac.zip
+            build_cmd: npm run build:mac
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Build application
+        run: ${{ matrix.build_cmd }}
+
+      - name: Upload artifact (Linux)
+        if: matrix.os == 'ubuntu-latest'
+        uses: actions/upload-artifact@v4
+        with:
+          name: linux-build
+          path: |
+            release/*.AppImage
+            release/*.deb
+
+      - name: Upload artifact (Windows)
+        if: matrix.os == 'windows-latest'
+        uses: actions/upload-artifact@v4
+        with:
+          name: windows-build
+          path: release/*.exe
+
+      - name: Upload artifact (macOS)
+        if: matrix.os == 'macos-latest'
+        uses: actions/upload-artifact@v4
+        with:
+          name: macos-build
+          path: release/*.zip
+
+  release:
+    needs: build
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Download Linux artifacts
+        uses: actions/download-artifact@v4
+        with:
+          name: linux-build
+          path: release/
+
+      - name: Download Windows artifacts
+        uses: actions/download-artifact@v4
+        with:
+          name: windows-build
+          path: release/
+
+      - name: Download macOS artifacts
+        uses: actions/download-artifact@v4
+        with:
+          name: macos-build
+          path: release/
+
+      - name: Get previous tag
+        id: prev_tag
+        run: |
+          PREV_TAG=$(git describe --tags --abbrev=0 HEAD^ 2>/dev/null || echo "")
+          echo "prev_tag=$PREV_TAG" >> $GITHUB_OUTPUT
+
+      - name: Generate Changelog
+        id: changelog
+        run: |
+          VERSION=${{ github.ref_name }}
+
+          # Get commits since last tag
+          if [ -n "${{ steps.prev_tag.outputs.prev_tag }}" ]; then
+            COMMITS=$(git log ${{ steps.prev_tag.outputs.prev_tag }}..HEAD --pretty=format:"- %s" --no-merges)
+          else
+            COMMITS=$(git log --pretty=format:"- %s" --no-merges -20)
+          fi
+
+          # Categorize commits
+          ADDED=$(echo "$COMMITS" | grep -iE "^[[:space:]]*- (feat|add|feature):" | sed -E 's/^- (feat|add|feature):/-/' || true)
+          CHANGED=$(echo "$COMMITS" | grep -iE "^[[:space:]]*- (refactor|change|update|improve):" | sed -E 's/^- (refactor|change|update|improve):/-/' || true)
+          FIXED=$(echo "$COMMITS" | grep -iE "^[[:space:]]*- (fix|bug):" | sed -E 's/^- (fix|bug):/-/' || true)
+          REMOVED=$(echo "$COMMITS" | grep -iE "^[[:space:]]*- (remove|delete):" | sed -E 's/^- (remove|delete):/-/' || true)
+
+          # Build changelog
+          CHANGELOG="# VidGrab ${VERSION}\n\n"
+
+          if [ -n "$ADDED" ]; then
+            CHANGELOG+="## 🚀 Added\n${ADDED}\n\n"
+          fi
+
+          if [ -n "$CHANGED" ]; then
+            CHANGELOG+="## 🔄 Changed\n${CHANGED}\n\n"
+          fi
+
+          if [ -n "$FIXED" ]; then
+            CHANGELOG+="## 🐛 Fixed\n${FIXED}\n\n"
+          fi
+
+          if [ -n "$REMOVED" ]; then
+            CHANGELOG+="## ❌ Removed\n${REMOVED}\n\n"
+          fi
+
+          # Save to file for multiline
+          echo -e "$CHANGELOG" > changelog.txt
+          cat changelog.txt
+
+      - name: Create Release
+        uses: softprops/action-gh-release@v1
+        with:
+          body_path: changelog.txt
+          files: |
+            release/*.AppImage
+            release/*.deb
+            release/*.exe
+            release/*-mac.zip
+          draft: false
+          prerelease: false
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: List release files
+        run: ls -la release/
