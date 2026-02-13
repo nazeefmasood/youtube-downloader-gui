@@ -1,6 +1,5 @@
 import * as http from 'http'
 import { QueueManager } from './queueManager'
-import { Downloader } from './downloader'
 
 const PORT = 3847
 const HOST = '127.0.0.1'
@@ -9,6 +8,18 @@ const HOST = '127.0.0.1'
 const rateLimitMap = new Map<string, { count: number; resetTime: number }>()
 const RATE_LIMIT_WINDOW = 60000 // 1 minute
 const RATE_LIMIT_MAX_REQUESTS = 60
+
+// Cleanup rate limit map periodically to prevent memory leak
+function cleanupRateLimitMap(): void {
+  const now = Date.now()
+  for (const [ip, record] of rateLimitMap.entries()) {
+    if (now > record.resetTime) {
+      rateLimitMap.delete(ip)
+    }
+  }
+}
+// Run cleanup every 5 minutes
+setInterval(cleanupRateLimitMap, 5 * 60 * 1000)
 
 function isRateLimited(ip: string): boolean {
   const now = Date.now()
@@ -76,7 +87,8 @@ function sendError(res: http.ServerResponse, message: string, statusCode = 400):
 }
 
 export function createHttpServer(queueManager: QueueManager): http.Server {
-  const downloader = new Downloader()
+  // Use shared downloader instance from queue manager to avoid creating multiple instances
+  const downloader = queueManager.getDownloader()
 
   const server = http.createServer(async (req, res) => {
     const clientIp = req.socket.remoteAddress || 'unknown'

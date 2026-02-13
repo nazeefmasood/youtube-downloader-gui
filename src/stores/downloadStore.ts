@@ -59,11 +59,11 @@ interface DownloadState {
 
 const defaultSettings: AppSettings = {
   downloadPath: '',
-  defaultQuality: '1080p',
+  defaultQuality: 'Best Quality',  // Changed from '1080p' to allow per-video best quality
   defaultFormat: 'mp4',
   organizeByType: true,
   autoStartDownload: false,
-  autoBestQuality: false,
+  autoBestQuality: true,  // Changed to true - prefer best quality per video
   maxConcurrentDownloads: 1,
   delayBetweenDownloads: 2000,
   theme: 'dark',
@@ -125,14 +125,17 @@ export const useDownloadStore = create<DownloadState>((set, get) => ({
       const formats = await window.electronAPI.getFormats(url)
       const settings = get().settings
 
-      // Find default format based on settings
-      let defaultFormat = formats.find(f =>
-        f.quality === settings.defaultQuality && f.ext === settings.defaultFormat
-      )
+      // Default to "Best Quality" (first format) for per-video optimal quality
+      // This ensures playlist downloads get the best quality for each individual video
+      let defaultFormat = formats[0]  // First format is always "Best Quality"
 
-      if (!defaultFormat && formats.length > 0) {
-        // Fall back to first matching quality or first format
-        defaultFormat = formats.find(f => f.quality === settings.defaultQuality) || formats[0]
+      // If user has a specific preference, try to match it
+      if (settings.defaultQuality && settings.defaultQuality !== 'Best Quality') {
+        const preferred = formats.find(f =>
+          f.quality === settings.defaultQuality ||
+          f.quality.includes(settings.defaultQuality)
+        )
+        if (preferred) defaultFormat = preferred
       }
 
       set({

@@ -56,6 +56,131 @@ interface SubtitleInfo {
   ext: string
 }
 
+// Common language code to name mapping
+const LANGUAGE_NAMES: Record<string, string> = {
+  'en': 'English',
+  'en-us': 'English (US)',
+  'en-gb': 'English (UK)',
+  'en-orig': 'English (Original)',
+  'es': 'Spanish',
+  'es-419': 'Spanish (Latin America)',
+  'es-es': 'Spanish (Spain)',
+  'fr': 'French',
+  'fr-fr': 'French (France)',
+  'de': 'German',
+  'it': 'Italian',
+  'pt': 'Portuguese',
+  'pt-br': 'Portuguese (Brazil)',
+  'pt-pt': 'Portuguese (Portugal)',
+  'ru': 'Russian',
+  'ja': 'Japanese',
+  'ko': 'Korean',
+  'zh': 'Chinese',
+  'zh-cn': 'Chinese (Simplified)',
+  'zh-tw': 'Chinese (Traditional)',
+  'zh-hans': 'Chinese (Simplified)',
+  'zh-hant': 'Chinese (Traditional)',
+  'ar': 'Arabic',
+  'hi': 'Hindi',
+  'bn': 'Bengali',
+  'tr': 'Turkish',
+  'vi': 'Vietnamese',
+  'th': 'Thai',
+  'id': 'Indonesian',
+  'ms': 'Malay',
+  'nl': 'Dutch',
+  'pl': 'Polish',
+  'uk': 'Ukrainian',
+  'sv': 'Swedish',
+  'no': 'Norwegian',
+  'da': 'Danish',
+  'fi': 'Finnish',
+  'cs': 'Czech',
+  'el': 'Greek',
+  'he': 'Hebrew',
+  'hu': 'Hungarian',
+  'ro': 'Romanian',
+  'sk': 'Slovak',
+  'bg': 'Bulgarian',
+  'hr': 'Croatian',
+  'sr': 'Serbian',
+  'sl': 'Slovenian',
+  'lt': 'Lithuanian',
+  'lv': 'Latvian',
+  'et': 'Estonian',
+  'fa': 'Persian',
+  'ur': 'Urdu',
+  'ta': 'Tamil',
+  'te': 'Telugu',
+  'ml': 'Malayalam',
+  'mr': 'Marathi',
+  'gu': 'Gujarati',
+  'kn': 'Kannada',
+  'pa': 'Punjabi',
+  'ab': 'Abkhazian',
+  'af': 'Afrikaans',
+  'am': 'Amharic',
+  'hy': 'Armenian',
+  'az': 'Azerbaijani',
+  'bs': 'Bosnian',
+  'ca': 'Catalan',
+  'ce': 'Chechen',
+  'co': 'Corsican',
+  'eo': 'Esperanto',
+  'eu': 'Basque',
+  'fo': 'Faroese',
+  'gl': 'Galician',
+  'ka': 'Georgian',
+  'ha': 'Hausa',
+  'is': 'Icelandic',
+  'ig': 'Igbo',
+  'ga': 'Irish',
+  'jv': 'Javanese',
+  'kk': 'Kazakh',
+  'km': 'Khmer',
+  'rw': 'Kinyarwanda',
+  'ku': 'Kurdish',
+  'ky': 'Kyrgyz',
+  'lo': 'Lao',
+  'la': 'Latin',
+  'lb': 'Luxembourgish',
+  'mk': 'Macedonian',
+  'mg': 'Malagasy',
+  'mt': 'Maltese',
+  'mi': 'Maori',
+  'mn': 'Mongolian',
+  'my': 'Myanmar (Burmese)',
+  'ne': 'Nepali',
+  'ny': 'Chichewa',
+  'or': 'Odia (Oriya)',
+  'ps': 'Pashto',
+  'qu': 'Quechua',
+  'rm': 'Romansh',
+  'rn': 'Kirundi',
+  'sm': 'Samoan',
+  'sg': 'Sango',
+  'sn': 'Shona',
+  'sd': 'Sindhi',
+  'si': 'Sinhala',
+  'so': 'Somali',
+  'st': 'Southern Sotho',
+  'su': 'Sundanese',
+  'sw': 'Swahili',
+  'tg': 'Tajik',
+  'tl': 'Filipino',
+  'ti': 'Tigrinya',
+  'ts': 'Tsonga',
+  'tt': 'Tatar',
+  'ug': 'Uyghur',
+  'uz': 'Uzbek',
+  'cy': 'Welsh',
+  'fy': 'Western Frisian',
+  'xh': 'Xhosa',
+  'yi': 'Yiddish',
+  'yo': 'Yoruba',
+  'zu': 'Zulu',
+}
+
 interface SubtitleOptions {
   enabled: boolean
   languages: string[]
@@ -82,6 +207,8 @@ export class Downloader extends EventEmitter {
   private ffmpegPath: string
   private cancelled = false
   private verified = false
+  // Limit stderr to prevent memory issues during long downloads
+  private readonly MAX_STDERR_LENGTH = 50 * 1024   // 50KB
 
   constructor() {
     super()
@@ -175,11 +302,17 @@ export class Downloader extends EventEmitter {
 
       ytdlp.stdout.on('data', (data) => {
         stdout += data.toString()
+        // NOTE: Do NOT truncate stdout here - runYtdlp is used for JSON responses
+        // (detectUrl, getFormats, getSubtitles) which require complete data
       })
 
       ytdlp.stderr.on('data', (data) => {
         const stderrChunk = data.toString()
         stderr += stderrChunk
+        // Truncate stderr to prevent memory issues (stderr is only for error messages)
+        if (stderr.length > this.MAX_STDERR_LENGTH) {
+          stderr = stderr.slice(-this.MAX_STDERR_LENGTH)
+        }
         // Log warnings and errors from yt-dlp
         if (stderrChunk.includes('WARNING') || stderrChunk.includes('ERROR')) {
           logger.info('yt-dlp stderr', stderrChunk.trim())
@@ -368,7 +501,8 @@ export class Downloader extends EventEmitter {
       : maxHeight >= 480 ? '480p'
       : `${maxHeight}p`
 
-    // Add "Best Quality" option first showing actual max resolution
+    // Add "Best Quality" option first - this adapts to each video's max resolution
+    // Important for playlists where videos have different max resolutions
     formats.push({
       formatId: 'bestvideo+bestaudio/best',
       ext: 'mp4',
@@ -446,6 +580,9 @@ export class Downloader extends EventEmitter {
       '--skip-download',
       '--no-warnings',
       '--extractor-args', 'youtube:player_client=default,web_creator,mweb,android',
+      // Add rate limiting to avoid 429 errors
+      '--sleep-requests', '2',
+      '--socket-timeout', '60',
       url,
     ]
 
@@ -484,9 +621,19 @@ export class Downloader extends EventEmitter {
         const match = line.match(/^(\S+)\s+(.+?)\s+(vtt|srt|ttml|ass)/i)
         if (match) {
           const [, lang, langName, ext] = match
+          const langCode = lang.trim().toLowerCase()
+
+          // Try to get a better language name from our mapping
+          let displayName = LANGUAGE_NAMES[langCode] || LANGUAGE_NAMES[langCode.split('-')[0]] || langName.trim()
+
+          // If auto-generated, mark it
+          if (isAutoGenerated && !displayName.includes('(Auto)')) {
+            displayName += ' (Auto)'
+          }
+
           subtitles.push({
             lang: lang.trim(),
-            langName: langName.trim(),
+            langName: displayName,
             isAutoGenerated,
             ext: ext.toLowerCase(),
           })
@@ -494,6 +641,16 @@ export class Downloader extends EventEmitter {
       }
 
       logger.info('Subtitles found', `${subtitles.length} subtitle tracks`)
+
+      // Sort subtitles: English first, then alphabetically by language name
+      subtitles.sort((a, b) => {
+        const aIsEn = a.lang.toLowerCase().startsWith('en')
+        const bIsEn = b.lang.toLowerCase().startsWith('en')
+        if (aIsEn && !bIsEn) return -1
+        if (!aIsEn && bIsEn) return 1
+        return a.langName.localeCompare(b.langName)
+      })
+
       return subtitles
     } catch (err) {
       logger.warn('Failed to get subtitles', err instanceof Error ? err.message : String(err))
@@ -516,16 +673,19 @@ export class Downloader extends EventEmitter {
       '--no-warnings',
       '--newline',
       '--progress',
+      '--ignore-errors',  // Continue on errors (e.g., subtitle 429) instead of failing
       // Use multi-client approach to avoid bot detection
       '--extractor-args', 'youtube:player_client=default,web_creator,mweb,android',
-      // Retry options for handling 403 errors and network issues
+      // Retry options for handling 403/429 errors and network issues
       '--retries', '10',
       '--fragment-retries', '10',
       '--extractor-retries', '5',
       '--file-access-retries', '5',
-      // Rate limiting to avoid IP blocking
-      '--sleep-requests', '1.5',
-      '--socket-timeout', '30',
+      // Aggressive rate limiting to avoid 429 Too Many Requests
+      '--sleep-requests', '2',
+      '--sleep-interval', '2',         // Sleep 2s between downloads
+      '--max-sleep-interval', '5',     // Up to 5s random sleep
+      '--socket-timeout', '60',        // Increased timeout
       // Use native HLS downloader for better m3u8 handling
       '--hls-prefer-native',
       // FFmpeg location
@@ -579,15 +739,19 @@ export class Downloader extends EventEmitter {
       if (subtitleOptions.includeAutoGenerated) {
         args.push('--write-auto-subs')
       }
-      if (subtitleOptions.languages.length > 0) {
-        args.push('--sub-langs', subtitleOptions.languages.join(','))
-      } else {
-        args.push('--sub-langs', 'en')  // Default to English
-      }
+
+      // Always use specified languages (UI now ensures at least one is set)
+      const langs = subtitleOptions.languages.length > 0
+        ? subtitleOptions.languages.join(',')
+        : 'en'  // Fallback to English
+      args.push('--sub-langs', langs)
+
       args.push('--sub-format', subtitleOptions.format || 'srt')
       if (subtitleOptions.embedInVideo && !audioOnly) {
         args.push('--embed-subs')
       }
+      // Add extra sleep for subtitle downloads to avoid 429 errors
+      args.push('--sleep-subtitles', '2')
     }
 
     args.push(url)
@@ -655,6 +819,10 @@ export class Downloader extends EventEmitter {
       this.currentProcess.stderr?.on('data', (data) => {
         const output = data.toString()
         stderrOutput += output
+        // Truncate to prevent memory issues during long downloads
+        if (stderrOutput.length > this.MAX_STDERR_LENGTH) {
+          stderrOutput = stderrOutput.slice(-this.MAX_STDERR_LENGTH)
+        }
 
         // Log all stderr output for debugging
         logger.info('yt-dlp stderr', output.trim())

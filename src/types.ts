@@ -105,6 +105,7 @@ export interface QueueItem {
   sourceType?: 'single' | 'playlist' | 'channel'
   contentType?: 'video' | 'audio' | 'subtitle' | 'video+sub'
   subtitleOptions?: SubtitleOptions
+  subtitleDisplayNames?: string  // Human-readable names like "English, Spanish"
   error?: string
 }
 
@@ -182,6 +183,7 @@ export interface ElectronAPI {
     sourceType?: 'single' | 'playlist' | 'channel'
     contentType?: 'video' | 'audio' | 'subtitle' | 'video+sub'
     subtitleOptions?: SubtitleOptions
+    subtitleDisplayNames?: string
   }) => Promise<{ id: string; position: number }>
   removeFromQueue: (id: string) => Promise<void>
   cancelQueueItem: (id: string) => Promise<void>
