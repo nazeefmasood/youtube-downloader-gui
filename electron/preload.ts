@@ -131,6 +131,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
       format: 'srt' | 'vtt' | 'ass'
       embedInVideo: boolean
     }
+    subtitleDisplayNames?: string
   }) => ipcRenderer.invoke('queue:add', item),
   removeFromQueue: (id: string) => ipcRenderer.invoke('queue:remove', id),
   cancelQueueItem: (id: string) => ipcRenderer.invoke('queue:cancel', id),

@@ -28,6 +28,7 @@ export interface QueueItem {
   sourceType?: 'single' | 'playlist' | 'channel'
   contentType?: 'video' | 'audio' | 'subtitle' | 'video+sub'
   subtitleOptions?: SubtitleOptions
+  subtitleDisplayNames?: string
   error?: string
 }
 
@@ -59,6 +60,8 @@ export class QueueManager extends EventEmitter {
   private downloadPath: string
   private settings: { organizeByType?: boolean; delayBetweenDownloads?: number } = {}
   private queueFilePath: string
+  private saveTimeout: NodeJS.Timeout | null = null
+  private readonly SAVE_DEBOUNCE_MS = 1000
 
   constructor() {
     super()
@@ -100,6 +103,14 @@ export class QueueManager extends EventEmitter {
     } catch (err) {
       logger.error('Failed to save queue', err instanceof Error ? err : String(err))
     }
+  }
+
+  private debouncedSaveQueue(): void {
+    if (this.saveTimeout) clearTimeout(this.saveTimeout)
+    this.saveTimeout = setTimeout(() => {
+      this.saveQueue()
+      this.saveTimeout = null
+    }, this.SAVE_DEBOUNCE_MS)
   }
 
   private getDefaultDownloadPath(): string {
@@ -185,7 +196,7 @@ export class QueueManager extends EventEmitter {
   }
 
   private emitUpdate(): void {
-    this.saveQueue()  // Persist on every change
+    this.debouncedSaveQueue()  // Persist with debounce to reduce disk I/O
     this.emit('update', this.getStatus())
   }
 
@@ -294,7 +305,7 @@ export class QueueManager extends EventEmitter {
         audioOnly: nextItem.audioOnly,
         outputPath: this.downloadPath,
         organizeByType: this.settings.organizeByType ?? true,
-        delayBetweenDownloads: this.settings.delayBetweenDownloads ?? 2000,
+        delayBetweenDownloads: this.settings.delayBetweenDownloads ?? 3000,  // Default 3s to avoid 429
         subtitleOptions: nextItem.subtitleOptions,
       })
     } catch (error) {

@@ -1,4 +1,4 @@
-import { useCallback, useState } from 'react'
+import { useCallback, useState, useRef, useEffect } from 'react'
 import type { QueueItem, QueueStatus, DownloadProgress } from '../../types'
 
 interface DownloadsTabProps {
@@ -7,9 +7,51 @@ interface DownloadsTabProps {
 }
 
 type FilterStatus = 'all' | 'active' | 'pending' | 'completed'
+type ClearMenuState = 'closed' | 'open'
+
+// Virtualization constants
+const ITEM_HEIGHT = 72  // Approximate height of each queue item
+const BUFFER_ITEMS = 5   // Extra items to render above/below viewport
 
 export function DownloadsTab({ queueStatus, downloadProgress }: DownloadsTabProps) {
   const [filterStatus, setFilterStatus] = useState<FilterStatus>('all')
+  const [scrollTop, setScrollTop] = useState(0)
+  const [clearMenuState, setClearMenuState] = useState<ClearMenuState>('closed')
+  const clearMenuRef = useRef<HTMLDivElement>(null)
+  const scrollContainerRef = useRef<HTMLDivElement>(null)
+
+  // Close clear menu when clicking outside
+  useEffect(() => {
+    const handleClickOutside = (event: MouseEvent) => {
+      if (clearMenuRef.current && !clearMenuRef.current.contains(event.target as Node)) {
+        setClearMenuState('closed')
+      }
+    }
+    if (clearMenuState === 'open') {
+      document.addEventListener('mousedown', handleClickOutside)
+      return () => document.removeEventListener('mousedown', handleClickOutside)
+    }
+  }, [clearMenuState])
+
+  // Handle scroll for virtualization
+  const handleScroll = useCallback((e: React.UIEvent<HTMLDivElement>) => {
+    setScrollTop(e.currentTarget.scrollTop)
+  }, [])
+
+  // Calculate visible range for virtualization
+  const getVisibleRange = useCallback((totalItems: number) => {
+    if (!scrollContainerRef.current || totalItems === 0) {
+      return { startIndex: 0, endIndex: Math.min(50, totalItems) }
+    }
+
+    const containerHeight = scrollContainerRef.current.clientHeight || 600
+    const visibleCount = Math.ceil(containerHeight / ITEM_HEIGHT) + BUFFER_ITEMS * 2
+
+    const startIndex = Math.max(0, Math.floor(scrollTop / ITEM_HEIGHT) - BUFFER_ITEMS)
+    const endIndex = Math.min(totalItems, startIndex + visibleCount)
+
+    return { startIndex, endIndex }
+  }, [scrollTop])
 
   const formatTime = (timestamp: number) => {
     return new Date(timestamp).toLocaleTimeString()
@@ -44,9 +86,48 @@ export function DownloadsTab({ queueStatus, downloadProgress }: DownloadsTabProp
     }
   }, [queueStatus.isPaused])
 
-  const handleClearQueue = useCallback(() => {
+  // Clear functions
+  const handleClearCompleted = useCallback(() => {
+    // Remove all completed items
+    queueStatus.items
+      .filter(item => item.status === 'completed')
+      .forEach(item => window.electronAPI.removeFromQueue(item.id))
+    setClearMenuState('closed')
+  }, [queueStatus.items])
+
+  const handleClearFailed = useCallback(() => {
+    // Remove all failed/cancelled items
+    queueStatus.items
+      .filter(item => item.status === 'failed' || item.status === 'cancelled')
+      .forEach(item => window.electronAPI.removeFromQueue(item.id))
+    setClearMenuState('closed')
+  }, [queueStatus.items])
+
+  const handleClearAllExceptActive = useCallback(() => {
+    // Remove all items except currently downloading
+    queueStatus.items
+      .filter(item => item.status !== 'downloading')
+      .forEach(item => window.electronAPI.removeFromQueue(item.id))
+    setClearMenuState('closed')
+  }, [queueStatus.items])
+
+  const handleClearAll = useCallback(() => {
+    // Cancel current download and clear everything
+    if (queueStatus.isProcessing && queueStatus.currentItemId) {
+      window.electronAPI.cancelQueueItem(queueStatus.currentItemId)
+    }
     window.electronAPI.clearQueue()
+    setClearMenuState('closed')
+  }, [queueStatus.isProcessing, queueStatus.currentItemId])
+
+  const toggleClearMenu = useCallback(() => {
+    setClearMenuState(prev => prev === 'open' ? 'closed' : 'open')
   }, [])
+
+  // Get counts for clear menu
+  const completedCount = queueStatus.items.filter(i => i.status === 'completed').length
+  const failedCount = queueStatus.items.filter(i => i.status === 'failed' || i.status === 'cancelled').length
+  const totalCount = queueStatus.items.length
 
   const handleRetryQueueItem = useCallback((id: string) => {
     window.electronAPI.retryQueueItem(id)
@@ -127,6 +208,12 @@ export function DownloadsTab({ queueStatus, downloadProgress }: DownloadsTabProp
   )
   const filteredItems = getFilteredItems()
 
+  // Calculate virtualization
+  const { startIndex, endIndex } = getVisibleRange(filteredItems.length)
+  const visibleItems = filteredItems.slice(startIndex, endIndex)
+  const totalHeight = filteredItems.length * ITEM_HEIGHT
+  const offsetY = startIndex * ITEM_HEIGHT
+
   // Get current queue progress
   const currentQueueItem = queueStatus.items.find((i) => i.id === queueStatus.currentItemId)
   const effectiveProgress = downloadProgress || currentQueueItem?.progress
@@ -201,13 +288,45 @@ export function DownloadsTab({ queueStatus, downloadProgress }: DownloadsTabProp
             )}
           </button>
         )}
-        <button type="button" className="btn-clear" onClick={handleClearQueue}>
-          CLEAR
-        </button>
+        {/* Clear dropdown menu */}
+        <div className="clear-dropdown" ref={clearMenuRef}>
+          <button
+            type="button"
+            className={`btn-clear ${clearMenuState === 'open' ? 'active' : ''}`}
+            onClick={toggleClearMenu}
+            disabled={totalCount === 0}
+          >
+            CLEAR {clearMenuState === 'open' ? '▲' : '▼'}
+          </button>
+          {clearMenuState === 'open' && (
+            <div className="clear-dropdown-menu">
+              {completedCount > 0 && (
+                <button type="button" onClick={handleClearCompleted}>
+                  COMPLETED ({completedCount})
+                </button>
+              )}
+              {failedCount > 0 && (
+                <button type="button" onClick={handleClearFailed}>
+                  FAILED/CANCELLED ({failedCount})
+                </button>
+              )}
+              <button type="button" onClick={handleClearAllExceptActive}>
+                KEEP ACTIVE ONLY
+              </button>
+              <button type="button" className="danger" onClick={handleClearAll}>
+                EVERYTHING ({totalCount})
+              </button>
+            </div>
+          )}
+        </div>
       </div>
 
       {/* Queue List */}
-      <div className={`queue-content ${queueStatus.isProcessing && effectiveProgress ? 'has-progress-bar' : ''}`}>
+      <div
+        ref={scrollContainerRef}
+        className={`queue-content ${queueStatus.isProcessing && effectiveProgress ? 'has-progress-bar' : ''}`}
+        onScroll={handleScroll}
+      >
         {filteredItems.length === 0 ? (
           <div className="empty-state">
             <div className="empty-state-icon">
@@ -225,8 +344,12 @@ export function DownloadsTab({ queueStatus, downloadProgress }: DownloadsTabProp
             </div>
           </div>
         ) : (
-          <div className="queue-list">
-            {filteredItems.map((item) => (
+          <div
+            className="queue-list"
+            style={{ height: totalHeight, position: 'relative' }}
+          >
+            <div style={{ position: 'absolute', top: offsetY, width: '100%' }}>
+              {visibleItems.map((item) => (
               <div
                 key={item.id}
                 className={`queue-item ${item.status === 'downloading' ? 'active' : ''} ${item.status === 'completed' ? 'completed' : ''} ${item.status === 'failed' ? 'failed' : ''} ${item.status === 'paused' ? 'paused' : ''}`}
@@ -248,9 +371,9 @@ export function DownloadsTab({ queueStatus, downloadProgress }: DownloadsTabProp
                   <div className="queue-item-meta">
                     {/* Content type + quality tag */}
                     <span className={`queue-item-tag tag-type ${item.contentType || (item.audioOnly ? 'audio' : 'video')}`}>
-                      {item.contentType === 'subtitle' ? 'SUBTITLE'
+                      {item.contentType === 'subtitle' ? `SUB ${item.subtitleDisplayNames || 'ALL'}`
                         : item.contentType === 'video+sub'
-                          ? `VIDEO+SUB${item.qualityLabel ? ` ${item.qualityLabel}` : ''}`
+                          ? `VIDEO+SUB (${item.subtitleDisplayNames || 'ALL'})${item.qualityLabel ? ` ${item.qualityLabel}` : ''}`
                         : item.contentType === 'audio' || item.audioOnly
                           ? `AUDIO${item.qualityLabel ? ` ${item.qualityLabel}` : ''}`
                           : `VIDEO${item.qualityLabel ? ` ${item.qualityLabel}` : ''}`}
@@ -348,6 +471,7 @@ export function DownloadsTab({ queueStatus, downloadProgress }: DownloadsTabProp
                 </div>
               </div>
             ))}
+            </div>
           </div>
         )}
       </div>

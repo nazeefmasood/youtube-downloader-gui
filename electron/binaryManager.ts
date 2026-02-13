@@ -349,26 +349,13 @@ export class BinaryManager {
     return { available: false, path: null, version: null }
   }
 
-  // Check if ffprobe is available
+  // Check if ffprobe is available (system only - ffprobe-static removed for size)
   checkFfprobe(): { available: boolean; path: string | null } {
-    // First try ffprobe-static (bundled)
-    try {
-      // eslint-disable-next-line @typescript-eslint/no-require-imports
-      const ffprobeStatic = require('ffprobe-static')
-      if (ffprobeStatic && ffprobeStatic.path && fs.existsSync(ffprobeStatic.path)) {
-        logger.info('ffprobe-static found', ffprobeStatic.path)
-        return { available: true, path: ffprobeStatic.path }
-      }
-    } catch (requireErr) {
-      logger.info('ffprobe-static not available, checking system ffprobe')
-    }
-
-    // Fall back to system ffprobe
     try {
       execSync('ffprobe -version', { timeout: 10000 })
       logger.info('System ffprobe found')
       return { available: true, path: 'ffprobe' }
-    } catch (systemErr) {
+    } catch {
       logger.warn('System ffprobe not found')
     }
 

@@ -16,6 +16,7 @@ interface StoreData {
 class SimpleStore {
   private data: StoreData
   private filePath: string
+  private readonly maxHistorySize = 100
 
   constructor() {
     const userDataPath = app.getPath('userData')
@@ -48,7 +49,12 @@ class SimpleStore {
   }
 
   set<K extends keyof StoreData>(key: K, value: StoreData[K]): void {
-    this.data[key] = value
+    // Enforce history size limit in memory, not just on save
+    if (key === 'history' && Array.isArray(value)) {
+      this.data[key] = value.slice(0, this.maxHistorySize) as StoreData[K]
+    } else {
+      this.data[key] = value
+    }
     this.save()
   }
 }
@@ -342,12 +348,13 @@ ipcMain.handle('download:cancel', async () => {
 ipcMain.handle('settings:get', () => {
   const defaults = {
     downloadPath: getDefaultDownloadPath(),
-    defaultQuality: '1080p',
+    defaultQuality: 'Best Quality',
     defaultFormat: 'mp4',
     organizeByType: true,
     autoStartDownload: false,
+    autoBestQuality: true,
     maxConcurrentDownloads: 1,
-    delayBetweenDownloads: 2000,
+    delayBetweenDownloads: 3000,  // Increased from 2000 to 3000ms to avoid 429 errors
     theme: 'dark',
     fontSize: 'medium',
   }
@@ -432,6 +439,7 @@ ipcMain.handle('queue:add', (_event, item: {
     format: 'srt' | 'vtt' | 'ass'
     embedInVideo: boolean
   }
+  subtitleDisplayNames?: string
 }) => {
   if (!queueManager) throw new Error('Queue manager not initialized')
 
