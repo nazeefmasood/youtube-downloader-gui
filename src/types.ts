@@ -123,6 +123,53 @@ export interface QueueStatus {
   currentItemId: string | null
 }
 
+// Update-related types
+export interface UpdateInfo {
+  version: string
+  currentVersion: string
+  releaseDate: string
+  releaseNotes: string
+  downloadUrl: string
+  mandatory: boolean
+}
+
+export interface UpdateProgress {
+  percent: number
+  transferred: number
+  total: number
+  bytesPerSecond: number
+}
+
+export interface UpdateStatus {
+  checking: boolean
+  available: boolean
+  downloading: boolean
+  downloaded: boolean
+  error: string | null
+  info: UpdateInfo | null
+  progress: UpdateProgress | null
+}
+
+export interface ChangelogSection {
+  added: string[]
+  changed: string[]
+  fixed: string[]
+  removed: string[]
+}
+
+export interface ChangelogData {
+  version: string
+  date: string
+  sections: ChangelogSection
+}
+
+export interface UpdateState {
+  lastVersionLaunched: string
+  lastUpdateCheck: string | null
+  updateSkippedVersion: string | null
+  changelogSeenForVersion: string
+}
+
 export interface AppSettings {
   downloadPath: string
   defaultQuality: string
@@ -212,6 +259,31 @@ export interface ElectronAPI {
   onBinaryDownloadProgress: (callback: (data: { percent: number; downloaded: number; total: number }) => void) => () => void
   onBinaryDownloadComplete: (callback: (data: { path: string }) => void) => () => void
   onBinaryDownloadError: (callback: (data: { error: string }) => void) => () => void
+
+  // Update operations
+  checkForUpdates: () => Promise<UpdateInfo | null>
+  downloadUpdate: () => Promise<string | null>
+  installUpdate: () => Promise<void>
+  getUpdateStatus: () => Promise<UpdateStatus>
+  cancelUpdate: () => Promise<void>
+  getChangelog: (body: string, version: string) => Promise<ChangelogData>
+  markChangelogSeen: () => Promise<void>
+  getUpdateState: () => Promise<UpdateState>
+  skipUpdateVersion: (version: string) => Promise<void>
+  resetUpdate: () => Promise<void>
+  fetchChangelogFromMain: (version: string) => Promise<ChangelogData>
+
+  // Update event listeners
+  onUpdateChecking: (callback: () => void) => () => void
+  onUpdateAvailable: (callback: (info: UpdateInfo) => void) => () => void
+  onUpdateNotAvailable: (callback: () => void) => () => void
+  onUpdateProgress: (callback: (progress: UpdateProgress) => void) => () => void
+  onUpdateDownloaded: (callback: (filePath: string) => void) => () => void
+  onUpdateError: (callback: (error: string) => void) => () => void
+  onUpdateCancelled: (callback: () => void) => () => void
+  onShowChangelog: (callback: (version: string) => void) => () => void
+  onLinuxDeb: (callback: (filePath: string) => void) => () => void
+  onLinuxAppImage: (callback: (filePath: string) => void) => () => void
 }
 
 declare global {

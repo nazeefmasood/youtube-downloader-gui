@@ -6,11 +6,18 @@ import { QueueManager, QueueStatus } from './queueManager'
 import { startHttpServer } from './httpServer'
 import { logger } from './logger'
 import { binaryManager } from './binaryManager'
+import { updater, UpdateInfo, UpdateProgress } from './updater'
 import * as http from 'http'
 
 interface StoreData {
   settings: Record<string, unknown>
   history: Array<Record<string, unknown>>
+  updateState: {
+    lastVersionLaunched: string
+    lastUpdateCheck: string | null
+    updateSkippedVersion: string | null
+    changelogSeenForVersion: string
+  }
 }
 
 class SimpleStore {
@@ -28,12 +35,33 @@ class SimpleStore {
     try {
       if (fs.existsSync(this.filePath)) {
         const content = fs.readFileSync(this.filePath, 'utf-8')
-        return JSON.parse(content)
+        const data = JSON.parse(content)
+        // Ensure updateState exists with defaults
+        return {
+          settings: {},
+          history: [],
+          updateState: {
+            lastVersionLaunched: app.getVersion(),
+            lastUpdateCheck: null,
+            updateSkippedVersion: null,
+            changelogSeenForVersion: app.getVersion(),
+          },
+          ...data,
+        }
       }
     } catch (err) {
       console.error('Failed to load store:', err)
     }
-    return { settings: {}, history: [] }
+    return {
+      settings: {},
+      history: [],
+      updateState: {
+        lastVersionLaunched: app.getVersion(),
+        lastUpdateCheck: null,
+        updateSkippedVersion: null,
+        changelogSeenForVersion: app.getVersion(),
+      },
+    }
   }
 
   private save(): void {
@@ -101,6 +129,32 @@ function createWindow() {
 
   mainWindow.once('ready-to-show', () => {
     mainWindow?.show()
+  })
+
+  // Wait for page to load before checking for updates
+  mainWindow.webContents.once('did-finish-load', () => {
+    // Check for changelog display
+    const updateState = store.get('updateState')
+    const currentVersion = app.getVersion()
+    if (updateState.lastVersionLaunched !== currentVersion) {
+      // First launch after update - show changelog
+      mainWindow?.webContents.send('update:show-changelog', currentVersion)
+      store.set('updateState', { ...updateState, lastVersionLaunched: currentVersion })
+    }
+
+    // Check for updates after page is fully loaded
+    setTimeout(() => {
+      console.log('[INFO] Checking for updates...')
+      updater.checkForUpdates().then((info) => {
+        if (info) {
+          console.log('[INFO] Update available:', info.version)
+        } else {
+          console.log('[INFO] No updates available')
+        }
+      }).catch((err) => {
+        console.error('[ERROR] Update check failed:', err)
+      })
+    }, 2000)
   })
 
   mainWindow.on('closed', () => {
@@ -172,6 +226,46 @@ function createWindow() {
     console.log('HTTP server started for extension communication')
   }).catch((error) => {
     console.error('Failed to start HTTP server:', error)
+  })
+
+  // Set up updater event listeners
+  updater.on('checking', () => {
+    mainWindow?.webContents.send('update:checking')
+  })
+
+  updater.on('available', (info: UpdateInfo) => {
+    mainWindow?.webContents.send('update:available', info)
+  })
+
+  updater.on('not-available', () => {
+    mainWindow?.webContents.send('update:not-available')
+    // Update last check time
+    const updateState = store.get('updateState')
+    store.set('updateState', { ...updateState, lastUpdateCheck: new Date().toISOString() })
+  })
+
+  updater.on('progress', (progress: UpdateProgress) => {
+    mainWindow?.webContents.send('update:progress', progress)
+  })
+
+  updater.on('downloaded', (filePath: string) => {
+    mainWindow?.webContents.send('update:downloaded', filePath)
+  })
+
+  updater.on('error', (error: string) => {
+    mainWindow?.webContents.send('update:error', error)
+  })
+
+  updater.on('cancelled', () => {
+    mainWindow?.webContents.send('update:cancelled')
+  })
+
+  updater.on('linux-deb', (filePath: string) => {
+    mainWindow?.webContents.send('update:linux-deb', filePath)
+  })
+
+  updater.on('linux-appimage', (filePath: string) => {
+    mainWindow?.webContents.send('update:linux-appimage', filePath)
   })
 }
 
@@ -522,4 +616,123 @@ ipcMain.handle('binary:download', async () => {
 
 ipcMain.handle('binary:status', () => {
   return binaryManager.getBinaryStatus()
+})
+
+// Update IPC handlers
+ipcMain.handle('update:check', async () => {
+  return await updater.checkForUpdates()
+})
+
+ipcMain.handle('update:download', async () => {
+  return await updater.downloadUpdate()
+})
+
+ipcMain.handle('update:install', async () => {
+  return await updater.installUpdate()
+})
+
+ipcMain.handle('update:getStatus', () => {
+  return updater.getStatus()
+})
+
+ipcMain.handle('update:cancel', () => {
+  updater.cancelDownload()
+})
+
+ipcMain.handle('update:getChangelog', (_event, body: string, version: string) => {
+  return updater.parseChangelog(body, version)
+})
+
+ipcMain.handle('update:markChangelogSeen', () => {
+  const updateState = store.get('updateState')
+  store.set('updateState', {
+    ...updateState,
+    changelogSeenForVersion: app.getVersion(),
+  })
+})
+
+ipcMain.handle('update:getUpdateState', () => {
+  return store.get('updateState')
+})
+
+ipcMain.handle('update:skipVersion', (_event, version: string) => {
+  const updateState = store.get('updateState')
+  store.set('updateState', {
+    ...updateState,
+    updateSkippedVersion: version,
+  })
+})
+
+ipcMain.handle('update:reset', () => {
+  updater.reset()
+})
+
+// Fetch changelog from GitHub (bypasses CORS)
+ipcMain.handle('update:fetchChangelog', async (_event, version: string) => {
+  try {
+    const https = await import('https')
+    return new Promise((resolve, reject) => {
+      const options = {
+        headers: {
+          'User-Agent': 'VidGrab-Updater',
+          'Accept': 'application/vnd.github.v3+json',
+        },
+      }
+
+      const req = https.get(
+        `https://api.github.com/repos/nazeefmasood/youtube-downloader-gui/releases/tags/v${version}`,
+        options,
+        (res) => {
+          let data = ''
+          res.on('data', (chunk) => { data += chunk })
+          res.on('end', () => {
+            if (res.statusCode === 200) {
+              try {
+                const release = JSON.parse(data)
+                const parsed = updater.parseChangelog(release.body || '', version)
+                resolve(parsed)
+              } catch {
+                reject(new Error('Failed to parse changelog'))
+              }
+            } else {
+              // Try without 'v' prefix
+              const req2 = https.get(
+                `https://api.github.com/repos/nazeefmasood/youtube-downloader-gui/releases/tags/${version}`,
+                options,
+                (res2) => {
+                  let data2 = ''
+                  res2.on('data', (chunk) => { data2 += chunk })
+                  res2.on('end', () => {
+                    if (res2.statusCode === 200) {
+                      try {
+                        const release = JSON.parse(data2)
+                        const parsed = updater.parseChangelog(release.body || '', version)
+                        resolve(parsed)
+                      } catch {
+                        reject(new Error('Failed to parse changelog'))
+                      }
+                    } else {
+                      reject(new Error('Changelog not found'))
+                    }
+                  })
+                }
+              )
+              req2.on('error', reject)
+              req2.setTimeout(15000, () => {
+                req2.destroy()
+                reject(new Error('Request timeout'))
+              })
+            }
+          })
+        }
+      )
+      req.on('error', reject)
+      req.setTimeout(15000, () => {
+        req.destroy()
+        reject(new Error('Request timeout'))
+      })
+    })
+  } catch (err) {
+    throw err
+  }
 })

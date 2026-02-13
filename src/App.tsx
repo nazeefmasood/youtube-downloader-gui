@@ -3,7 +3,9 @@ import { APP_VERSION } from "./version";
 import { useDownloadStore } from "./stores/downloadStore";
 import { AnalyzeTab } from "./components/tabs/AnalyzeTab";
 import { DownloadsTab } from "./components/tabs/DownloadsTab";
-import type { DownloadProgress, LogEntry } from "./types";
+import { UpdateModal } from "./components/UpdateModal";
+import { ChangelogModal } from "./components/ChangelogModal";
+import type { DownloadProgress, LogEntry, UpdateInfo, UpdateProgress, UpdateStatus } from "./types";
 
 type View = "analyze" | "downloads" | "history" | "settings";
 type Theme = "dark" | "light";
@@ -19,6 +21,21 @@ function App() {
   const [binaryDownloading, setBinaryDownloading] = useState(false);
   const [binaryDownloadProgress, setBinaryDownloadProgress] = useState(0);
   const [binaryError, setBinaryError] = useState<string | null>(null);
+
+  // Update system state
+  const [updateStatus, setUpdateStatus] = useState<UpdateStatus>({
+    checking: false,
+    available: false,
+    downloading: false,
+    downloaded: false,
+    error: null,
+    info: null,
+    progress: null,
+  });
+  const [showUpdateModal, setShowUpdateModal] = useState(false);
+  const [showChangelogModal, setShowChangelogModal] = useState(false);
+  const [changelogVersion, setChangelogVersion] = useState<string | null>(null);
+  const [updateNotification, setUpdateNotification] = useState<string | null>(null);
 
   const {
     contentInfo,
@@ -116,6 +133,78 @@ function App() {
       unsubProgress();
       unsubComplete();
       unsubError();
+    };
+  }, []);
+
+  // Set up update event listeners
+  useEffect(() => {
+    const unsubChecking = window.electronAPI.onUpdateChecking(() => {
+      setUpdateStatus((prev) => ({ ...prev, checking: true, error: null }));
+    });
+
+    const unsubAvailable = window.electronAPI.onUpdateAvailable((info: UpdateInfo) => {
+      setUpdateStatus((prev) => ({
+        ...prev,
+        checking: false,
+        available: true,
+        info,
+      }));
+      setShowUpdateModal(true);
+    });
+
+    const unsubNotAvailable = window.electronAPI.onUpdateNotAvailable(() => {
+      setUpdateStatus((prev) => ({ ...prev, checking: false, available: false }));
+      setUpdateNotification("You're running the latest version!");
+      setTimeout(() => setUpdateNotification(null), 3000);
+    });
+
+    const unsubProgress = window.electronAPI.onUpdateProgress((progress: UpdateProgress) => {
+      setUpdateStatus((prev) => ({ ...prev, progress }));
+    });
+
+    const unsubDownloaded = window.electronAPI.onUpdateDownloaded(() => {
+      setUpdateStatus((prev) => ({
+        ...prev,
+        downloading: false,
+        downloaded: true,
+        progress: null,
+      }));
+    });
+
+    const unsubError = window.electronAPI.onUpdateError((error: string) => {
+      setUpdateStatus((prev) => ({
+        ...prev,
+        checking: false,
+        downloading: false,
+        error,
+      }));
+      setUpdateNotification(`Update error: ${error}`);
+      setTimeout(() => setUpdateNotification(null), 5000);
+    });
+
+    const unsubCancelled = window.electronAPI.onUpdateCancelled(() => {
+      setUpdateStatus((prev) => ({
+        ...prev,
+        downloading: false,
+        progress: null,
+      }));
+    });
+
+    const unsubShowChangelog = window.electronAPI.onShowChangelog((version: string) => {
+      setChangelogVersion(version);
+      setShowChangelogModal(true);
+      window.electronAPI.markChangelogSeen();
+    });
+
+    return () => {
+      unsubChecking();
+      unsubAvailable();
+      unsubNotAvailable();
+      unsubProgress();
+      unsubDownloaded();
+      unsubError();
+      unsubCancelled();
+      unsubShowChangelog();
     };
   }, []);
 
@@ -251,6 +340,36 @@ function App() {
   const handleDownloadBinary = useCallback(async () => {
     setBinaryError(null);
     await window.electronAPI.downloadBinary();
+  }, []);
+
+  // Handle update actions
+  const handleCheckUpdates = useCallback(async () => {
+    setUpdateStatus((prev) => ({ ...prev, error: null }));
+    await window.electronAPI.checkForUpdates();
+  }, []);
+
+  const handleDownloadUpdate = useCallback(async () => {
+    setUpdateStatus((prev) => ({ ...prev, downloading: true, error: null }));
+    await window.electronAPI.downloadUpdate();
+  }, []);
+
+  const handleInstallUpdate = useCallback(async () => {
+    await window.electronAPI.installUpdate();
+  }, []);
+
+  const handleCloseUpdateModal = useCallback(() => {
+    setShowUpdateModal(false);
+    window.electronAPI.resetUpdate();
+  }, []);
+
+  const handleCloseChangelogModal = useCallback(() => {
+    setShowChangelogModal(false);
+    setChangelogVersion(null);
+  }, []);
+
+  const handleShowChangelog = useCallback(() => {
+    setChangelogVersion(APP_VERSION);
+    setShowChangelogModal(true);
   }, []);
 
   // Handle callback when items are added to queue
@@ -419,6 +538,14 @@ function App() {
               </button>
             )}
           </div>
+        </div>
+      )}
+
+      {/* Update Notification Toast */}
+      {updateNotification && (
+        <div className="update-notification-toast">
+          <span className="notification-icon">◈</span>
+          <span className="notification-text">{updateNotification}</span>
         </div>
       )}
 
@@ -866,6 +993,47 @@ function App() {
             </div>
 
             <div className="settings-group">
+              <div className="settings-group-title">UPDATES</div>
+              <div className="setting-item">
+                <div className="setting-info">
+                  <div className="setting-label">Current Version</div>
+                  <div className="setting-description">
+                    VidGrab v{APP_VERSION}
+                  </div>
+                </div>
+                <button
+                  className="btn-secondary"
+                  onClick={handleCheckUpdates}
+                  disabled={updateStatus.checking}
+                >
+                  {updateStatus.checking ? "CHECKING..." : "CHECK FOR UPDATES"}
+                </button>
+              </div>
+              <div
+                className="setting-item clickable"
+                onClick={handleShowChangelog}
+              >
+                <div className="setting-info">
+                  <div className="setting-label">View Changelog</div>
+                  <div className="setting-description">
+                    See what's new in this version
+                  </div>
+                </div>
+                <svg
+                  width="16"
+                  height="16"
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  stroke="currentColor"
+                  strokeWidth="2"
+                  style={{ opacity: 0.5 }}
+                >
+                  <polyline points="9 18 15 12 9 6" />
+                </svg>
+              </div>
+            </div>
+
+            <div className="settings-group">
               <div className="settings-group-title">ABOUT</div>
               <div className="setting-item">
                 <div className="setting-info">
@@ -1013,42 +1181,72 @@ function App() {
       <div className="status-bar">
         <div className="status-bar-left">
           <div
-            className={`status-indicator ${isActiveDownload ? "downloading" : ""} ${queueStatus.isPaused ? "paused" : ""} ${queueJustFinished ? "complete" : ""}`}
+            className={`status-indicator ${isActiveDownload ? "downloading" : ""} ${queueStatus.isPaused ? "paused" : ""} ${queueJustFinished ? "complete" : ""} ${updateStatus.checking ? "checking" : ""} ${updateStatus.downloading ? "downloading" : ""} ${updateStatus.downloaded ? "complete" : ""}`}
           />
           <span>
-            {isActiveDownload && downloadProgress?.status === "downloading" &&
-              `DOWNLOADING ${downloadProgress.percent?.toFixed(0)}%`}
-            {isActiveDownload && downloadProgress?.status === "merging" &&
-              "MERGING FILES"}
-            {isActiveDownload && downloadProgress?.status === "waiting" &&
-              "WAITING FOR NEXT"}
-            {isActiveDownload && !downloadProgress && "PROCESSING"}
-            {!isActiveDownload &&
-              queueStatus.isPaused &&
-              activeQueueItems.length > 0 &&
-              "PAUSED"}
-            {!isActiveDownload &&
-              !queueStatus.isPaused &&
-              (showSuccess || queueJustFinished) &&
-              `COMPLETE (${completedQueueItems.length} DOWNLOADED)`}
-            {!isActiveDownload &&
-              !queueStatus.isPaused &&
-              !showSuccess &&
-              !queueJustFinished &&
-              activeQueueItems.length > 0 &&
-              `${activeQueueItems.length} IN QUEUE`}
-            {!isActiveDownload &&
-              !queueStatus.isPaused &&
-              !showSuccess &&
-              !queueJustFinished &&
-              activeQueueItems.length === 0 &&
-              "READY"}
+            {/* Update status takes priority */}
+            {updateStatus.checking && "CHECKING FOR UPDATES..."}
+            {updateStatus.downloading && updateStatus.progress &&
+              `DOWNLOADING UPDATE ${updateStatus.progress.percent}%`}
+            {updateStatus.downloaded && "UPDATE READY - CLICK TO INSTALL"}
+            {/* Regular status */}
+            {!updateStatus.checking && !updateStatus.downloading && !updateStatus.downloaded && (
+              <>
+                {isActiveDownload && downloadProgress?.status === "downloading" &&
+                  `DOWNLOADING ${downloadProgress.percent?.toFixed(0)}%`}
+                {isActiveDownload && downloadProgress?.status === "merging" &&
+                  "MERGING FILES"}
+                {isActiveDownload && downloadProgress?.status === "waiting" &&
+                  "WAITING FOR NEXT"}
+                {isActiveDownload && !downloadProgress && "PROCESSING"}
+                {!isActiveDownload &&
+                  queueStatus.isPaused &&
+                  activeQueueItems.length > 0 &&
+                  "PAUSED"}
+                {!isActiveDownload &&
+                  !queueStatus.isPaused &&
+                  (showSuccess || queueJustFinished) &&
+                  `COMPLETE (${completedQueueItems.length} DOWNLOADED)`}
+                {!isActiveDownload &&
+                  !queueStatus.isPaused &&
+                  !showSuccess &&
+                  !queueJustFinished &&
+                  activeQueueItems.length > 0 &&
+                  `${activeQueueItems.length} IN QUEUE`}
+                {!isActiveDownload &&
+                  !queueStatus.isPaused &&
+                  !showSuccess &&
+                  !queueJustFinished &&
+                  activeQueueItems.length === 0 &&
+                  "READY"}
+              </>
+            )}
           </span>
         </div>
         <span>
           {history.length} DOWNLOADS LOGGED // {theme.toUpperCase()} MODE
         </span>
       </div>
+
+      {/* Update Modal */}
+      <UpdateModal
+        visible={showUpdateModal}
+        updateInfo={updateStatus.info}
+        downloading={updateStatus.downloading}
+        downloaded={updateStatus.downloaded}
+        progress={updateStatus.progress}
+        error={updateStatus.error}
+        onDownload={handleDownloadUpdate}
+        onInstall={handleInstallUpdate}
+        onClose={handleCloseUpdateModal}
+      />
+
+      {/* Changelog Modal */}
+      <ChangelogModal
+        visible={showChangelogModal}
+        version={changelogVersion || undefined}
+        onClose={handleCloseChangelogModal}
+      />
     </>
   );
 }

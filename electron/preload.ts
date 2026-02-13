@@ -198,4 +198,81 @@ contextBridge.exposeInMainWorld('electronAPI', {
     ipcRenderer.on('binary:download-error', subscription)
     return () => ipcRenderer.removeListener('binary:download-error', subscription)
   },
+
+  // Update operations
+  checkForUpdates: () => ipcRenderer.invoke('update:check'),
+  downloadUpdate: () => ipcRenderer.invoke('update:download'),
+  installUpdate: () => ipcRenderer.invoke('update:install'),
+  getUpdateStatus: () => ipcRenderer.invoke('update:getStatus'),
+  cancelUpdate: () => ipcRenderer.invoke('update:cancel'),
+  getChangelog: (body: string, version: string) => ipcRenderer.invoke('update:getChangelog', body, version),
+  markChangelogSeen: () => ipcRenderer.invoke('update:markChangelogSeen'),
+  getUpdateState: () => ipcRenderer.invoke('update:getUpdateState'),
+  skipUpdateVersion: (version: string) => ipcRenderer.invoke('update:skipVersion', version),
+  resetUpdate: () => ipcRenderer.invoke('update:reset'),
+  fetchChangelogFromMain: (version: string) => ipcRenderer.invoke('update:fetchChangelog', version),
+
+  // Update event listeners
+  onUpdateChecking: (callback: () => void) => {
+    const subscription = () => callback()
+    ipcRenderer.on('update:checking', subscription)
+    return () => ipcRenderer.removeListener('update:checking', subscription)
+  },
+  onUpdateAvailable: (callback: (info: {
+    version: string
+    currentVersion: string
+    releaseDate: string
+    releaseNotes: string
+    downloadUrl: string
+    mandatory: boolean
+  }) => void) => {
+    const subscription = (_event: Electron.IpcRendererEvent, info: Parameters<typeof callback>[0]) => callback(info)
+    ipcRenderer.on('update:available', subscription)
+    return () => ipcRenderer.removeListener('update:available', subscription)
+  },
+  onUpdateNotAvailable: (callback: () => void) => {
+    const subscription = () => callback()
+    ipcRenderer.on('update:not-available', subscription)
+    return () => ipcRenderer.removeListener('update:not-available', subscription)
+  },
+  onUpdateProgress: (callback: (progress: {
+    percent: number
+    transferred: number
+    total: number
+    bytesPerSecond: number
+  }) => void) => {
+    const subscription = (_event: Electron.IpcRendererEvent, progress: Parameters<typeof callback>[0]) => callback(progress)
+    ipcRenderer.on('update:progress', subscription)
+    return () => ipcRenderer.removeListener('update:progress', subscription)
+  },
+  onUpdateDownloaded: (callback: (filePath: string) => void) => {
+    const subscription = (_event: Electron.IpcRendererEvent, filePath: string) => callback(filePath)
+    ipcRenderer.on('update:downloaded', subscription)
+    return () => ipcRenderer.removeListener('update:downloaded', subscription)
+  },
+  onUpdateError: (callback: (error: string) => void) => {
+    const subscription = (_event: Electron.IpcRendererEvent, error: string) => callback(error)
+    ipcRenderer.on('update:error', subscription)
+    return () => ipcRenderer.removeListener('update:error', subscription)
+  },
+  onUpdateCancelled: (callback: () => void) => {
+    const subscription = () => callback()
+    ipcRenderer.on('update:cancelled', subscription)
+    return () => ipcRenderer.removeListener('update:cancelled', subscription)
+  },
+  onShowChangelog: (callback: (version: string) => void) => {
+    const subscription = (_event: Electron.IpcRendererEvent, version: string) => callback(version)
+    ipcRenderer.on('update:show-changelog', subscription)
+    return () => ipcRenderer.removeListener('update:show-changelog', subscription)
+  },
+  onLinuxDeb: (callback: (filePath: string) => void) => {
+    const subscription = (_event: Electron.IpcRendererEvent, filePath: string) => callback(filePath)
+    ipcRenderer.on('update:linux-deb', subscription)
+    return () => ipcRenderer.removeListener('update:linux-deb', subscription)
+  },
+  onLinuxAppImage: (callback: (filePath: string) => void) => {
+    const subscription = (_event: Electron.IpcRendererEvent, filePath: string) => callback(filePath)
+    ipcRenderer.on('update:linux-appimage', subscription)
+    return () => ipcRenderer.removeListener('update:linux-appimage', subscription)
+  },
 })
