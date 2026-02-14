@@ -99,45 +99,27 @@ jobs:
           PREV_TAG=$(git describe --tags --abbrev=0 HEAD^ 2>/dev/null || echo "")
           echo "prev_tag=$PREV_TAG" >> $GITHUB_OUTPUT
 
-      - name: Generate Changelog
+      - name: Extract Changelog for Release
         id: changelog
         run: |
           VERSION=${{ github.ref_name }}
+          VERSION_NUM=$(echo $VERSION | sed 's/v//')
 
-          # Get commits since last tag
-          if [ -n "${{ steps.prev_tag.outputs.prev_tag }}" ]; then
-            COMMITS=$(git log ${{ steps.prev_tag.outputs.prev_tag }}..HEAD --pretty=format:"- %s" --no-merges)
+          # Extract changelog section for this version from CHANGELOG.md
+          if [ -f "CHANGELOG.md" ]; then
+            # Get content between this version header and the next version header
+            CHANGELOG=$(sed -n "/## \[$VERSION_NUM\]/,/## \[/p" CHANGELOG.md | head -n -1 | tail -n +2)
+            if [ -z "$CHANGELOG" ]; then
+              CHANGELOG="See [CHANGELOG.md](https://github.com/nazeefmasood/youtube-downloader-gui/blob/main/CHANGELOG.md) for release notes."
+            fi
           else
-            COMMITS=$(git log --pretty=format:"- %s" --no-merges -20)
+            CHANGELOG="Release $VERSION"
           fi
 
-          # Categorize commits
-          ADDED=$(echo "$COMMITS" | grep -iE "^[[:space:]]*- (feat|add|feature):" | sed -E 's/^- (feat|add|feature):/-/' || true)
-          CHANGED=$(echo "$COMMITS" | grep -iE "^[[:space:]]*- (refactor|change|update|improve):" | sed -E 's/^- (refactor|change|update|improve):/-/' || true)
-          FIXED=$(echo "$COMMITS" | grep -iE "^[[:space:]]*- (fix|bug):" | sed -E 's/^- (fix|bug):/-/' || true)
-          REMOVED=$(echo "$COMMITS" | grep -iE "^[[:space:]]*- (remove|delete):" | sed -E 's/^- (remove|delete):/-/' || true)
-
-          # Build changelog
-          CHANGELOG="# VidGrab ${VERSION}\n\n"
-
-          if [ -n "$ADDED" ]; then
-            CHANGELOG+="## 🚀 Added\n${ADDED}\n\n"
-          fi
-
-          if [ -n "$CHANGED" ]; then
-            CHANGELOG+="## 🔄 Changed\n${CHANGED}\n\n"
-          fi
-
-          if [ -n "$FIXED" ]; then
-            CHANGELOG+="## 🐛 Fixed\n${FIXED}\n\n"
-          fi
-
-          if [ -n "$REMOVED" ]; then
-            CHANGELOG+="## ❌ Removed\n${REMOVED}\n\n"
-          fi
-
-          # Save to file for multiline
-          echo -e "$CHANGELOG" > changelog.txt
+          # Save to file
+          echo "# VidGrab ${VERSION}" > changelog.txt
+          echo "" >> changelog.txt
+          echo "$CHANGELOG" >> changelog.txt
           cat changelog.txt
 
       - name: Create Release
