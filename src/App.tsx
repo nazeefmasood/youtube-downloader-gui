@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useRef } from "react";
 import { APP_VERSION } from "./version";
 import { useDownloadStore } from "./stores/downloadStore";
 import { AnalyzeTab } from "./components/tabs/AnalyzeTab";
@@ -21,6 +21,10 @@ function App() {
   const [binaryDownloading, setBinaryDownloading] = useState(false);
   const [binaryDownloadProgress, setBinaryDownloadProgress] = useState(0);
   const [binaryError, setBinaryError] = useState<string | null>(null);
+  const [ffmpegMissing, setFfmpegMissing] = useState(false);
+  const [ffmpegDownloading, setFfmpegDownloading] = useState(false);
+  const [ffmpegDownloadProgress, setFfmpegDownloadProgress] = useState(0);
+  const [ffmpegError, setFfmpegError] = useState<string | null>(null);
 
   // Update system state
   const [updateStatus, setUpdateStatus] = useState<UpdateStatus>({
@@ -139,6 +143,57 @@ function App() {
       unsubError();
     };
   }, []);
+
+  // Check for ffmpeg on startup
+  useEffect(() => {
+    const checkFfmpeg = async () => {
+      const installed = await window.electronAPI.checkFfmpeg();
+      if (!installed) {
+        setFfmpegMissing(true);
+      }
+    };
+    checkFfmpeg();
+
+    // Reuse binary download listeners for ffmpeg (they share the same events)
+    const unsubStart = window.electronAPI.onBinaryDownloadStart((data) => {
+      // Check if it's ffmpeg being downloaded
+      if (data.name.includes('ffmpeg')) {
+        setFfmpegDownloading(true);
+        setFfmpegDownloadProgress(0);
+        setFfmpegError(null);
+      }
+    });
+
+    const unsubProgress = window.electronAPI.onBinaryDownloadProgress(
+      (data) => {
+        if (ffmpegDownloading) {
+          setFfmpegDownloadProgress(data.percent);
+        }
+      },
+    );
+
+    const unsubComplete = window.electronAPI.onBinaryDownloadComplete(() => {
+      if (ffmpegDownloading) {
+        setFfmpegDownloading(false);
+        setFfmpegMissing(false);
+        setFfmpegDownloadProgress(100);
+      }
+    });
+
+    const unsubError = window.electronAPI.onBinaryDownloadError((data) => {
+      if (ffmpegDownloading) {
+        setFfmpegDownloading(false);
+        setFfmpegError(data.error);
+      }
+    });
+
+    return () => {
+      unsubStart();
+      unsubProgress();
+      unsubComplete();
+      unsubError();
+    };
+  }, [ffmpegDownloading]);
 
   // Set up update event listeners
   useEffect(() => {
@@ -357,6 +412,12 @@ function App() {
     await window.electronAPI.downloadBinary();
   }, []);
 
+  // Handle ffmpeg download
+  const handleDownloadFfmpeg = useCallback(async () => {
+    setFfmpegError(null);
+    await window.electronAPI.downloadFfmpeg();
+  }, []);
+
   // Handle update actions
   const handleCheckUpdates = useCallback(async () => {
     setUpdateStatus((prev) => ({ ...prev, error: null }));
@@ -483,6 +544,9 @@ function App() {
     toggleTheme,
   ]);
 
+  // Track previous queue processing state to detect completion
+  const wasProcessingRef = useRef(false);
+
   // Queue counts
   const activeQueueItems = queueStatus.items.filter(
     (i) =>
@@ -499,6 +563,20 @@ function App() {
     completedQueueItems.length > 0 &&
     activeQueueItems.length === 0 &&
     !queueStatus.isProcessing;
+
+  // Show success overlay when queue finishes
+  useEffect(() => {
+    const wasProcessing = wasProcessingRef.current;
+    const isNowFinished = queueJustFinished && !queueStatus.isPaused;
+
+    // Queue transitioned from processing to finished
+    if (wasProcessing && isNowFinished && !showSuccess) {
+      setShowSuccess(true);
+    }
+
+    // Update ref for next render
+    wasProcessingRef.current = queueStatus.isProcessing || activeQueueItems.length > 0;
+  }, [queueJustFinished, queueStatus.isProcessing, queueStatus.isPaused, activeQueueItems.length, showSuccess]);
 
   const isActiveDownload = isDownloading || queueStatus.isProcessing;
 
@@ -576,11 +654,82 @@ function App() {
         </div>
       )}
 
-      {/* Update Notification Toast */}
+      {/* FFmpeg Download Modal - only show if yt-dlp is installed but ffmpeg is missing */}
+      {!binaryMissing && ffmpegMissing && (
+        <div className="binary-modal-overlay">
+          <div className="binary-modal">
+            <div className="binary-modal-icon">
+              <svg
+                width="48"
+                height="48"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="2"
+              >
+                <polygon points="23 7 16 12 23 17 23 7" />
+                <rect x="1" y="5" width="15" height="14" rx="2" ry="2" />
+              </svg>
+            </div>
+            <div className="binary-modal-title">FFMPEG REQUIRED</div>
+            <div className="binary-modal-text">
+              VidGrab requires FFmpeg to merge video and audio streams. Without it, videos will be downloaded as separate files. Click below to download it automatically.
+            </div>
+            {ffmpegError && (
+              <div className="binary-modal-error">
+                <svg
+                  width="14"
+                  height="14"
+                  viewBox="0 0 24 24"
+                  fill="currentColor"
+                >
+                  <path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm1 15h-2v-2h2v2zm0-4h-2V7h2v6z" />
+                </svg>
+                {ffmpegError}
+              </div>
+            )}
+            {ffmpegDownloading ? (
+              <div className="binary-modal-progress">
+                <div className="binary-progress-bar">
+                  <div
+                    className="binary-progress-fill"
+                    style={{ width: `${ffmpegDownloadProgress}%` }}
+                  />
+                </div>
+                <div className="binary-progress-text">
+                  Downloading FFmpeg... {ffmpegDownloadProgress}%
+                </div>
+              </div>
+            ) : (
+              <button
+                type="button"
+                className="binary-modal-btn"
+                onClick={handleDownloadFfmpeg}
+              >
+                <svg
+                  width="16"
+                  height="16"
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  stroke="currentColor"
+                  strokeWidth="2"
+                >
+                  <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
+                  <polyline points="7 10 12 15 17 10" />
+                  <line x1="12" y1="15" x2="12" y2="3" />
+                </svg>
+                DOWNLOAD FFMPEG
+              </button>
+            )}
+          </div>
+        </div>
+      )}
+
+      {/* Update Notification - Simple */}
       {updateNotification && (
-        <div className="update-notification-toast">
-          <span className="notification-icon">◈</span>
-          <span className="notification-text">{updateNotification}</span>
+        <div className="notify-simple">
+          <span className="notify-simple-dot" />
+          <span className="notify-simple-text">{updateNotification}</span>
         </div>
       )}
 

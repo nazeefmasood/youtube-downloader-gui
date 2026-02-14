@@ -1,12 +1,15 @@
 import * as fs from 'fs'
 import * as path from 'path'
 import * as https from 'https'
+import * as zlib from 'zlib'
+import { pipeline } from 'stream/promises'
 import { app, BrowserWindow } from 'electron'
 import { execSync } from 'child_process'
 import { logger } from './logger'
 
 // Using latest stable version
 const YTDLP_VERSION = '2026.02.04'
+const FFMPEG_VERSION = '7.1.1'
 
 interface BinaryInfo {
   name: string
@@ -57,6 +60,37 @@ export class BinaryManager {
       name: binaryName,
       url,
       path: path.join(this.userDataPath, binaryName), // Default download target
+      executable: platform !== 'win32',
+    }
+  }
+
+  // Get ffmpeg binary info for current platform
+  private getFfmpegBinaryInfo(): BinaryInfo {
+    const platform = process.platform
+    const arch = process.arch
+    let binaryName: string
+    let url: string
+
+    // Use gyan.dev builds (official Windows builds) and evermeetcx for macOS, johnvansickle for Linux
+    if (platform === 'win32') {
+      // Windows: Use essentials build (smaller, has all we need)
+      binaryName = `ffmpeg-${FFMPEG_VERSION}-essentials_build.zip`
+      url = `https://www.gyan.dev/ffmpeg/builds/ffmpeg-release-essentials.zip`
+    } else if (platform === 'darwin') {
+      // macOS: Use evermeetcx builds
+      binaryName = `ffmpeg-${FFMPEG_VERSION}.zip`
+      url = `https://evermeet.cx/ffmpeg/getrelease/ffmpeg/zip`
+    } else {
+      // Linux: Use johnvansickle builds (static)
+      const linuxArch = arch === 'arm64' ? 'arm64' : 'amd64'
+      binaryName = `ffmpeg-${FFMPEG_VERSION}-${linuxArch}.tar.xz`
+      url = `https://johnvansickle.com/ffmpeg/releases/ffmpeg-release-${linuxArch}-static.tar.xz`
+    }
+
+    return {
+      name: binaryName,
+      url,
+      path: path.join(this.userDataPath, binaryName),
       executable: platform !== 'win32',
     }
   }
@@ -311,50 +345,339 @@ export class BinaryManager {
     return path.join(this.userDataPath, binary.name)
   }
 
-  // Check if ffmpeg is available (either from ffmpeg-static or system)
-  checkFfmpeg(): { available: boolean; path: string | null; version: string | null } {
-    // First try ffmpeg-static (bundled)
-    try {
-      // eslint-disable-next-line @typescript-eslint/no-require-imports
-      let ffmpegStatic = require('ffmpeg-static')
+  // Get the expected ffmpeg executable name for the current platform
+  private getFfmpegExecutableName(): string {
+    return process.platform === 'win32' ? 'ffmpeg.exe' : 'ffmpeg'
+  }
 
-      // Handle the path for packaged apps
-      if (ffmpegStatic) {
-        // In production, the path might be inside app.asar.unpacked
-        // Check if it exists at the returned path
-        if (!fs.existsSync(ffmpegStatic)) {
-          // Try alternative paths for packaged app
-          const isPackaged = app.isPackaged
-          if (isPackaged) {
-            // Try the unpacked path directly
-            const unpackedPath = ffmpegStatic.replace('app.asar', 'app.asar.unpacked')
-            if (fs.existsSync(unpackedPath)) {
-              ffmpegStatic = unpackedPath
-            } else {
-              // Try resources path
-              const resourcesPath = path.join(process.resourcesPath, 'node_modules', 'ffmpeg-static', path.basename(ffmpegStatic))
-              if (fs.existsSync(resourcesPath)) {
-                ffmpegStatic = resourcesPath
-              }
+  // Get the path where ffmpeg executable should be stored
+  getFfmpegPath(): string {
+    const ffmpegName = this.getFfmpegExecutableName()
+
+    // Check bundled path first
+    const bundledFfmpeg = path.join(this.bundledPath, ffmpegName)
+    if (fs.existsSync(bundledFfmpeg)) {
+      return bundledFfmpeg
+    }
+
+    // Check userData path
+    const userFfmpeg = path.join(this.userDataPath, ffmpegName)
+    return userFfmpeg
+  }
+
+  // Check if ffmpeg is installed (bundled or downloaded)
+  isFfmpegInstalled(): boolean {
+    const ffmpegPath = this.getFfmpegPath()
+    return fs.existsSync(ffmpegPath)
+  }
+
+  // Download and extract ffmpeg
+  async downloadFfmpeg(mainWindow: BrowserWindow | null): Promise<boolean> {
+    const ffmpegName = this.getFfmpegExecutableName()
+    const targetPath = path.join(this.userDataPath, ffmpegName)
+
+    logger.info('Starting ffmpeg download')
+
+    try {
+      // Ensure binaries directory exists
+      if (!fs.existsSync(this.userDataPath)) {
+        fs.mkdirSync(this.userDataPath, { recursive: true })
+      }
+
+      mainWindow?.webContents.send('binary:download-start', {
+        name: `ffmpeg-${FFMPEG_VERSION}`,
+      })
+
+      const platform = process.platform
+
+      // For macOS, we can download the binary directly
+      if (platform === 'darwin') {
+        return await this.downloadFfmpegMacos(targetPath, mainWindow)
+      }
+
+      // For Windows and Linux, we need to download and extract from archive
+      return await this.downloadAndExtractFfmpeg(targetPath, mainWindow)
+    } catch (err) {
+      const error = err instanceof Error ? err.message : String(err)
+      logger.error('ffmpeg download setup failed', error)
+      mainWindow?.webContents.send('binary:download-error', { error })
+      return false
+    }
+  }
+
+  // Download ffmpeg for macOS (direct binary)
+  private async downloadFfmpegMacos(targetPath: string, mainWindow: BrowserWindow | null): Promise<boolean> {
+    const url = 'https://evermeet.cx/ffmpeg/getrelease/ffmpeg/zip'
+
+    return new Promise((resolve) => {
+      const tempPath = targetPath + '.zip'
+
+      const downloadFile = (downloadUrl: string, redirectCount = 0): void => {
+        if (redirectCount > 5) {
+          const error = 'Too many redirects'
+          logger.error('ffmpeg download failed', error)
+          mainWindow?.webContents.send('binary:download-error', { error })
+          resolve(false)
+          return
+        }
+
+        https.get(downloadUrl, (response) => {
+          if (response.statusCode === 301 || response.statusCode === 302) {
+            const redirectUrl = response.headers.location
+            if (redirectUrl) {
+              downloadFile(redirectUrl, redirectCount + 1)
+              return
             }
           }
+
+          if (response.statusCode !== 200) {
+            const error = `HTTP error: ${response.statusCode}`
+            logger.error('ffmpeg download failed', error)
+            mainWindow?.webContents.send('binary:download-error', { error })
+            resolve(false)
+            return
+          }
+
+          const totalSize = parseInt(response.headers['content-length'] || '0', 10)
+          let downloadedSize = 0
+          const file = fs.createWriteStream(tempPath)
+
+          response.on('data', (chunk: Buffer) => {
+            downloadedSize += chunk.length
+            const percent = totalSize > 0 ? Math.round((downloadedSize / totalSize) * 100) : 0
+            mainWindow?.webContents.send('binary:download-progress', {
+              percent,
+              downloaded: downloadedSize,
+              total: totalSize,
+            })
+          })
+
+          response.pipe(file)
+
+          file.on('finish', () => {
+            file.close()
+
+            // Extract the zip (macOS zip contains just 'ffmpeg' binary)
+            try {
+              // Use unzip command on macOS
+              execSync(`unzip -o "${tempPath}" -d "${this.userDataPath}"`, { timeout: 30000 })
+              fs.unlinkSync(tempPath)
+
+              // Make executable
+              fs.chmodSync(targetPath, 0o755)
+
+              // Verify
+              const version = execSync(`"${targetPath}" -version`, { timeout: 10000 }).toString().split('\n')[0].trim()
+              logger.info('ffmpeg downloaded and verified', version)
+              mainWindow?.webContents.send('binary:download-complete', { path: targetPath })
+              resolve(true)
+            } catch (extractErr) {
+              const error = `Failed to extract ffmpeg: ${extractErr instanceof Error ? extractErr.message : String(extractErr)}`
+              logger.error('ffmpeg extraction failed', error)
+              mainWindow?.webContents.send('binary:download-error', { error })
+              resolve(false)
+            }
+          })
+
+          file.on('error', (err) => {
+            try { fs.unlinkSync(tempPath) } catch { /* ignore */ }
+            logger.error('ffmpeg download failed', err.message)
+            mainWindow?.webContents.send('binary:download-error', { error: err.message })
+            resolve(false)
+          })
+        }).on('error', (err) => {
+          logger.error('ffmpeg download failed', err)
+          mainWindow?.webContents.send('binary:download-error', { error: err.message })
+          resolve(false)
+        })
+      }
+
+      downloadFile(url, 0)
+    })
+  }
+
+  // Download and extract ffmpeg for Windows/Linux
+  private async downloadAndExtractFfmpeg(targetPath: string, mainWindow: BrowserWindow | null): Promise<boolean> {
+    const platform = process.platform
+    const arch = process.arch
+
+    let url: string
+    let tempExt: string
+
+    if (platform === 'win32') {
+      url = 'https://www.gyan.dev/ffmpeg/builds/ffmpeg-release-essentials.zip'
+      tempExt = '.zip'
+    } else {
+      // Linux
+      const linuxArch = arch === 'arm64' ? 'arm64' : 'amd64'
+      url = `https://johnvansickle.com/ffmpeg/releases/ffmpeg-release-${linuxArch}-static.tar.xz`
+      tempExt = '.tar.xz'
+    }
+
+    return new Promise((resolve) => {
+      const tempPath = targetPath + tempExt
+
+      const downloadFile = (downloadUrl: string, redirectCount = 0): void => {
+        if (redirectCount > 5) {
+          const error = 'Too many redirects'
+          logger.error('ffmpeg download failed', error)
+          mainWindow?.webContents.send('binary:download-error', { error })
+          resolve(false)
+          return
         }
 
-        if (ffmpegStatic && fs.existsSync(ffmpegStatic)) {
-          try {
-            const version = execSync(`"${ffmpegStatic}" -version`, { timeout: 10000 })
-              .toString()
-              .split('\n')[0]
-              .trim()
-            logger.info('ffmpeg verified', `Path: ${ffmpegStatic}, Version: ${version}`)
-            return { available: true, path: ffmpegStatic, version }
-          } catch (versionErr) {
-            logger.warn('ffmpeg-static exists but failed version check', versionErr instanceof Error ? versionErr.message : String(versionErr))
+        https.get(downloadUrl, (response) => {
+          if (response.statusCode === 301 || response.statusCode === 302) {
+            const redirectUrl = response.headers.location
+            if (redirectUrl) {
+              downloadFile(redirectUrl, redirectCount + 1)
+              return
+            }
           }
-        }
+
+          if (response.statusCode !== 200) {
+            const error = `HTTP error: ${response.statusCode}`
+            logger.error('ffmpeg download failed', error)
+            mainWindow?.webContents.send('binary:download-error', { error })
+            resolve(false)
+            return
+          }
+
+          const totalSize = parseInt(response.headers['content-length'] || '0', 10)
+          let downloadedSize = 0
+          const file = fs.createWriteStream(tempPath)
+
+          response.on('data', (chunk: Buffer) => {
+            downloadedSize += chunk.length
+            const percent = totalSize > 0 ? Math.round((downloadedSize / totalSize) * 100) : 0
+            mainWindow?.webContents.send('binary:download-progress', {
+              percent,
+              downloaded: downloadedSize,
+              total: totalSize,
+            })
+          })
+
+          response.pipe(file)
+
+          file.on('finish', () => {
+            file.close()
+
+            // Extract
+            try {
+              if (platform === 'win32') {
+                // Windows: Extract using PowerShell or built-in tools
+                // Find ffmpeg.exe in the extracted folder structure
+                const extractDir = path.join(this.userDataPath, 'ffmpeg-temp')
+                execSync(`powershell -Command "Expand-Archive -Path '${tempPath}' -DestinationPath '${extractDir}' -Force"`, { timeout: 60000 })
+
+                // Find and move ffmpeg.exe
+                const findAndMove = (dir: string): boolean => {
+                  const items = fs.readdirSync(dir)
+                  for (const item of items) {
+                    const itemPath = path.join(dir, item)
+                    const stat = fs.statSync(itemPath)
+                    if (stat.isDirectory()) {
+                      if (findAndMove(itemPath)) return true
+                    } else if (item === 'ffmpeg.exe') {
+                      fs.copyFileSync(itemPath, targetPath)
+                      return true
+                    }
+                  }
+                  return false
+                }
+
+                if (findAndMove(extractDir)) {
+                  // Cleanup
+                  fs.rmSync(extractDir, { recursive: true, force: true })
+                  fs.unlinkSync(tempPath)
+
+                  const version = execSync(`"${targetPath}" -version`, { timeout: 10000 }).toString().split('\n')[0].trim()
+                  logger.info('ffmpeg downloaded and verified', version)
+                  mainWindow?.webContents.send('binary:download-complete', { path: targetPath })
+                  resolve(true)
+                } else {
+                  throw new Error('ffmpeg.exe not found in archive')
+                }
+              } else {
+                // Linux: Extract tar.xz
+                const extractDir = path.join(this.userDataPath, 'ffmpeg-temp')
+                fs.mkdirSync(extractDir, { recursive: true })
+                execSync(`tar -xf "${tempPath}" -C "${extractDir}"`, { timeout: 60000 })
+
+                // Find and move ffmpeg
+                const findAndMove = (dir: string): boolean => {
+                  const items = fs.readdirSync(dir)
+                  for (const item of items) {
+                    const itemPath = path.join(dir, item)
+                    const stat = fs.statSync(itemPath)
+                    if (stat.isDirectory()) {
+                      if (findAndMove(itemPath)) return true
+                    } else if (item === 'ffmpeg') {
+                      fs.copyFileSync(itemPath, targetPath)
+                      fs.chmodSync(targetPath, 0o755)
+                      return true
+                    }
+                  }
+                  return false
+                }
+
+                if (findAndMove(extractDir)) {
+                  // Cleanup
+                  fs.rmSync(extractDir, { recursive: true, force: true })
+                  fs.unlinkSync(tempPath)
+
+                  const version = execSync(`"${targetPath}" -version`, { timeout: 10000 }).toString().split('\n')[0].trim()
+                  logger.info('ffmpeg downloaded and verified', version)
+                  mainWindow?.webContents.send('binary:download-complete', { path: targetPath })
+                  resolve(true)
+                } else {
+                  throw new Error('ffmpeg not found in archive')
+                }
+              }
+            } catch (extractErr) {
+              const error = `Failed to extract ffmpeg: ${extractErr instanceof Error ? extractErr.message : String(extractErr)}`
+              logger.error('ffmpeg extraction failed', error)
+              // Cleanup on error
+              try { fs.rmSync(path.join(this.userDataPath, 'ffmpeg-temp'), { recursive: true, force: true }) } catch { /* ignore */ }
+              try { fs.unlinkSync(tempPath) } catch { /* ignore */ }
+              mainWindow?.webContents.send('binary:download-error', { error })
+              resolve(false)
+            }
+          })
+
+          file.on('error', (err) => {
+            try { fs.unlinkSync(tempPath) } catch { /* ignore */ }
+            logger.error('ffmpeg download failed', err.message)
+            mainWindow?.webContents.send('binary:download-error', { error: err.message })
+            resolve(false)
+          })
+        }).on('error', (err) => {
+          logger.error('ffmpeg download failed', err)
+          mainWindow?.webContents.send('binary:download-error', { error: err.message })
+          resolve(false)
+        })
       }
-    } catch (requireErr) {
-      logger.info('ffmpeg-static not available, checking system ffmpeg')
+
+      downloadFile(url, 0)
+    })
+  }
+
+  // Check if ffmpeg is available (downloaded, bundled, or system)
+  checkFfmpeg(): { available: boolean; path: string | null; version: string | null } {
+    const ffmpegPath = this.getFfmpegPath()
+
+    // First check if we have a downloaded/bundled ffmpeg
+    if (fs.existsSync(ffmpegPath)) {
+      try {
+        const version = execSync(`"${ffmpegPath}" -version`, { timeout: 10000 })
+          .toString()
+          .split('\n')[0]
+          .trim()
+        logger.info('ffmpeg verified', `Path: ${ffmpegPath}, Version: ${version}`)
+        return { available: true, path: ffmpegPath, version }
+      } catch (versionErr) {
+        logger.warn('ffmpeg exists but failed version check', versionErr instanceof Error ? versionErr.message : String(versionErr))
+      }
     }
 
     // Fall back to system ffmpeg
@@ -369,7 +692,7 @@ export class BinaryManager {
       logger.warn('System ffmpeg not found', systemErr instanceof Error ? systemErr.message : String(systemErr))
     }
 
-    logger.error('No ffmpeg available', 'Neither ffmpeg-static nor system ffmpeg found')
+    logger.error('No ffmpeg available', 'Neither downloaded nor system ffmpeg found')
     return { available: false, path: null, version: null }
   }
 

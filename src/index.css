@@ -3986,7 +3986,7 @@ body,
 
 .analyze-input::placeholder {
   color: var(--text-muted);
-  font-style: italic;
+  text-transform: capitalize;
 }
 
 .analyze-input:disabled {
@@ -5573,29 +5573,28 @@ body,
 }
 
 /* ============================================
-   UPDATE NOTIFICATION TOAST
+   SIMPLE UPDATE NOTIFICATION
    ============================================ */
 
-.update-notification-toast {
+.notify-simple {
   position: fixed;
-  top: 50px;
+  top: 48px;
   left: 50%;
   transform: translateX(-50%);
-  background: var(--bg-secondary);
-  border: 2px solid var(--accent);
-  padding: 12px 24px;
   display: flex;
   align-items: center;
-  gap: 12px;
+  gap: 8px;
+  padding: 8px 16px;
+  background: var(--bg-primary);
+  border: 1px solid var(--border);
   z-index: 10001;
-  animation: toastSlideIn 0.3s ease-out;
-  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.5);
+  animation: notifySlideIn 0.3s ease-out;
 }
 
-@keyframes toastSlideIn {
+@keyframes notifySlideIn {
   from {
     opacity: 0;
-    transform: translateX(-50%) translateY(-20px);
+    transform: translateX(-50%) translateY(-8px);
   }
   to {
     opacity: 1;
@@ -5603,18 +5602,38 @@ body,
   }
 }
 
-.notification-icon {
-  color: var(--accent);
-  font-size: 14px;
-  animation: iconPulse 1s ease-in-out infinite;
+.notify-simple-dot {
+  width: 6px;
+  height: 6px;
+  background: var(--accent);
+  animation: dotBlink 2s ease-in-out infinite;
 }
 
-.notification-text {
-  font-size: 12px;
+@keyframes dotBlink {
+  0%, 100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.4;
+  }
+}
+
+.notify-simple-text {
+  font-size: 10px;
   font-weight: 600;
   letter-spacing: 0.1em;
-  color: var(--text-primary);
   text-transform: uppercase;
+  color: var(--text-secondary);
+}
+
+/* Light mode */
+[data-theme="light"] .notify-simple {
+  background: var(--bg-primary);
+  border-color: var(--border);
+}
+
+[data-theme="light"] .notify-simple-dot {
+  background: var(--accent);
 }
 
 /* ============================================

@@ -55,6 +55,12 @@ export class Updater extends EventEmitter {
   private readonly GITHUB_REPO = 'nazeefmasood/youtube-downloader-gui'
   private readonly GITHUB_API_URL = `https://api.github.com/repos/${this.GITHUB_REPO}/releases/latest`
 
+  // GitHub tokens for API authentication (with fallback)
+  private readonly GITHUB_TOKENS = [
+    process.env.GITHUB_TOKEN || '', // Primary token from environment
+    process.env.GITHUB_TOKEN_FALLBACK || '', // Fallback token from environment
+  ].filter(t => t.length > 0)
+
   constructor() {
     super()
   }
@@ -181,18 +187,32 @@ export class Updater extends EventEmitter {
     }
   }
 
-  // Fetch latest release from GitHub API (unauthenticated - 60 requests/hour)
+  // Fetch latest release from GitHub API with token fallback
   private fetchLatestRelease(): Promise<{
     tag_name: string
     published_at: string
     body: string
     assets: Array<{ name: string; browser_download_url: string }>
   } | null> {
+    return this.fetchWithTokenFallback(0)
+  }
+
+  // Try fetching with each token, falling back on 404/auth errors
+  private fetchWithTokenFallback(tokenIndex: number): Promise<{
+    tag_name: string
+    published_at: string
+    body: string
+    assets: Array<{ name: string; browser_download_url: string }>
+  } | null> {
     return new Promise((resolve, reject) => {
+      // If we've exhausted all tokens, try unauthenticated as last resort
+      const token = tokenIndex < this.GITHUB_TOKENS.length ? this.GITHUB_TOKENS[tokenIndex] : null
+
       const options: https.RequestOptions = {
         headers: {
           'User-Agent': 'VidGrab-Updater',
           'Accept': 'application/vnd.github.v3+json',
+          ...(token ? { Authorization: `Bearer ${token}` } : {}),
         },
       }
 
@@ -204,7 +224,26 @@ export class Updater extends EventEmitter {
         })
 
         res.on('end', () => {
+          // On 404 or 401, try next token
+          if (res.statusCode === 404 || res.statusCode === 401) {
+            const nextIndex = tokenIndex + 1
+            if (nextIndex <= this.GITHUB_TOKENS.length) {
+              logger.warn(`GitHub token ${tokenIndex} returned ${res.statusCode}, trying fallback`)
+              this.fetchWithTokenFallback(nextIndex).then(resolve).catch(reject)
+              return
+            }
+            reject(new Error(`GitHub API returned ${res.statusCode}`))
+            return
+          }
+
           if (res.statusCode === 403) {
+            // Rate limited - try next token
+            const nextIndex = tokenIndex + 1
+            if (nextIndex <= this.GITHUB_TOKENS.length) {
+              logger.warn('GitHub rate limited, trying fallback token')
+              this.fetchWithTokenFallback(nextIndex).then(resolve).catch(reject)
+              return
+            }
             reject(new Error('GitHub API rate limited. Please try again later.'))
             return
           }
