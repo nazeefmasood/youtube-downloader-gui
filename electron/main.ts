@@ -737,137 +737,102 @@ ipcMain.handle('update:reset', () => {
   updater.reset()
 })
 
-// GitHub tokens for API authentication (shared with updater)
-const GITHUB_TOKENS = [
-  process.env.GITHUB_TOKEN || '', // Primary token from environment
-  process.env.GITHUB_TOKEN_FALLBACK || '', // Fallback token from environment
-].filter(t => t.length > 0)
+// Empty changelog fallback
+const getEmptyChangelog = (version: string) => ({
+  version,
+  date: new Date().toISOString(),
+  sections: {
+    added: [] as string[],
+    changed: [] as string[],
+    fixed: [] as string[],
+    removed: [] as string[],
+  },
+})
 
-// Fetch changelog from GitHub with token fallback
-ipcMain.handle('update:fetchChangelog', async (_event, version: string) => {
-  // Fallback empty changelog with explicit typing
-  const fallbackChangelog: {
-    version: string
-    date: string
-    sections: {
-      added: string[]
-      changed: string[]
-      fixed: string[]
-      removed: string[]
-    }
-  } = {
-    version,
-    date: new Date().toISOString(),
-    sections: {
-      added: [],
-      changed: [],
-      fixed: [],
-      removed: [],
-    },
-  }
-
-  const tryWithToken = (tokenIndex: number): Promise<typeof fallbackChangelog> => {
-    return new Promise((resolve) => {
-      const token = tokenIndex < GITHUB_TOKENS.length ? GITHUB_TOKENS[tokenIndex] : null
-
-      const options: import('https').RequestOptions = {
-        headers: {
-          'User-Agent': 'VidGrab-Updater',
-          'Accept': 'application/vnd.github.v3+json',
-          ...(token ? { Authorization: `Bearer ${token}` } : {}),
-        },
-      }
-
-      const url = `https://api.github.com/repos/nazeefmasood/youtube-downloader-gui/releases/tags/v${version}`
-
-      const req = import('https').then(https => {
-        const req = https.get(url, options, (res) => {
-          let data = ''
-          res.on('data', (chunk) => { data += chunk })
-          res.on('end', () => {
-            if (res.statusCode === 200) {
-              try {
-                const release = JSON.parse(data)
-                const parsed = updater.parseChangelog(release.body || '', version)
-                resolve(parsed)
-              } catch {
-                resolve(fallbackChangelog)
-              }
-            } else if (res.statusCode === 404 || res.statusCode === 401) {
-              // Try next token or without 'v' prefix
-              if (tokenIndex + 1 <= GITHUB_TOKENS.length) {
-                tryWithToken(tokenIndex + 1).then(resolve)
-              } else {
-                // Try without 'v' prefix as last resort
-                tryWithoutVPrefix(resolve)
-              }
-            } else if (res.statusCode === 403) {
-              // Rate limited, try next token
-              if (tokenIndex + 1 <= GITHUB_TOKENS.length) {
-                tryWithToken(tokenIndex + 1).then(resolve)
-              } else {
-                resolve(fallbackChangelog)
-              }
-            } else {
-              resolve(fallbackChangelog)
-            }
-          })
-        })
-        req.on('error', () => resolve(fallbackChangelog))
-        req.setTimeout(15000, () => {
-          req.destroy()
-          resolve(fallbackChangelog)
-        })
-      })
-    })
-  }
-
-  const tryWithoutVPrefix = (resolve: (value: typeof fallbackChangelog) => void) => {
-    const tryWithTokenNoV = (tokenIndex: number) => {
-      const token = tokenIndex < GITHUB_TOKENS.length ? GITHUB_TOKENS[tokenIndex] : null
-      const options: import('https').RequestOptions = {
-        headers: {
-          'User-Agent': 'VidGrab-Updater',
-          'Accept': 'application/vnd.github.v3+json',
-          ...(token ? { Authorization: `Bearer ${token}` } : {}),
-        },
-      }
-
-      const url = `https://api.github.com/repos/nazeefmasood/youtube-downloader-gui/releases/tags/${version}`
-
-      import('https').then(https => {
-        const req = https.get(url, options, (res) => {
-          let data = ''
-          res.on('data', (chunk) => { data += chunk })
-          res.on('end', () => {
-            if (res.statusCode === 200) {
-              try {
-                const release = JSON.parse(data)
-                const parsed = updater.parseChangelog(release.body || '', version)
-                resolve(parsed)
-              } catch {
-                resolve(fallbackChangelog)
-              }
-            } else if ((res.statusCode === 404 || res.statusCode === 401) && tokenIndex + 1 <= GITHUB_TOKENS.length) {
-              tryWithTokenNoV(tokenIndex + 1)
-            } else {
-              resolve(fallbackChangelog)
-            }
-          })
-        })
-        req.on('error', () => resolve(fallbackChangelog))
-        req.setTimeout(15000, () => {
-          req.destroy()
-          resolve(fallbackChangelog)
-        })
-      })
-    }
-    tryWithTokenNoV(0)
-  }
-
+// Parse local CHANGELOG.md file - returns all versions
+function parseLocalChangelog(): ReturnType<typeof getEmptyChangelog>[] {
   try {
-    return await tryWithToken(0)
-  } catch {
-    return fallbackChangelog
+    // Try to find CHANGELOG.md in different locations
+    const possiblePaths = [
+      path.join(process.resourcesPath, 'CHANGELOG.md'), // Production (extraResources)
+      path.join(__dirname, '..', 'CHANGELOG.md'), // Production alt
+      path.join(process.cwd(), 'CHANGELOG.md'), // Development
+    ]
+
+    let changelogPath: string | null = null
+    for (const p of possiblePaths) {
+      if (fs.existsSync(p)) {
+        changelogPath = p
+        break
+      }
+    }
+
+    if (!changelogPath) {
+      logger.warn('CHANGELOG.md not found')
+      return []
+    }
+
+    const content = fs.readFileSync(changelogPath, 'utf-8')
+    const versions: ReturnType<typeof getEmptyChangelog>[] = []
+
+    // Split by version headers
+    const versionRegex = /## \[([^\]]+)\]\s*-\s*(\d{4}-\d{2}-\d{2})/g
+    let match
+    const sections = content.split(/## \[[^\]]+\]/)
+
+    // First section is the header, skip it
+    let sectionIndex = 1
+
+    while ((match = versionRegex.exec(content)) !== null) {
+      const version = match[1]
+      const date = match[2]
+      const sectionContent = sections[sectionIndex] || ''
+
+      // Parse each subsection
+      const parseSection = (header: string): string[] => {
+        const sectionRegex = new RegExp(`### ${header}\\n([\\s\\S]*?)(?=### |## |$)`, 'i')
+        const sectionMatch = sectionContent.match(sectionRegex)
+        if (!sectionMatch) return []
+
+        return sectionMatch[1]
+          .split('\n')
+          .map(line => line.trim())
+          .filter(line => line.startsWith('- '))
+          .map(line => line.substring(2).trim())
+          .filter(line => line.length > 0)
+      }
+
+      const versionData = {
+        version,
+        date,
+        sections: {
+          added: parseSection('Added'),
+          changed: parseSection('Changed'),
+          fixed: parseSection('Fixed'),
+          removed: parseSection('Removed'),
+        },
+      }
+
+      // Only add if there's at least some content
+      if (versionData.sections.added.length > 0 ||
+          versionData.sections.changed.length > 0 ||
+          versionData.sections.fixed.length > 0 ||
+          versionData.sections.removed.length > 0) {
+        versions.push(versionData)
+      }
+
+      sectionIndex++
+    }
+
+    logger.info('Changelog loaded', `${versions.length} versions`)
+    return versions
+  } catch (err) {
+    logger.error('Failed to parse changelog', err instanceof Error ? err.message : String(err))
+    return []
   }
+}
+
+// Fetch changelog from local file only
+ipcMain.handle('update:fetchChangelog', async () => {
+  return parseLocalChangelog()
 })

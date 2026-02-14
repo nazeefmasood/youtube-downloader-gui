@@ -317,7 +317,7 @@ export interface ElectronAPI {
   getUpdateState: () => Promise<UpdateState>
   skipUpdateVersion: (version: string) => Promise<void>
   resetUpdate: () => Promise<void>
-  fetchChangelogFromMain: (version: string) => Promise<ChangelogData>
+  fetchChangelogFromMain: () => Promise<ChangelogData[]>
 
   // Update event listeners
   onUpdateChecking: (callback: () => void) => () => void

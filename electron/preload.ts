@@ -216,7 +216,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
   getUpdateState: () => ipcRenderer.invoke('update:getUpdateState'),
   skipUpdateVersion: (version: string) => ipcRenderer.invoke('update:skipVersion', version),
   resetUpdate: () => ipcRenderer.invoke('update:reset'),
-  fetchChangelogFromMain: (version: string) => ipcRenderer.invoke('update:fetchChangelog', version),
+  fetchChangelogFromMain: () => ipcRenderer.invoke('update:fetchChangelog'),
 
   // Update event listeners
   onUpdateChecking: (callback: () => void) => {

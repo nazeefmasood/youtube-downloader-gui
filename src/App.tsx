@@ -38,7 +38,6 @@ function App() {
   });
   const [showUpdateModal, setShowUpdateModal] = useState(false);
   const [showChangelogModal, setShowChangelogModal] = useState(false);
-  const [changelogVersion, setChangelogVersion] = useState<string | null>(null);
   const [updateNotification, setUpdateNotification] = useState<string | null>(null);
 
   // PO Token status
@@ -249,8 +248,7 @@ function App() {
       }));
     });
 
-    const unsubShowChangelog = window.electronAPI.onShowChangelog((version: string) => {
-      setChangelogVersion(version);
+    const unsubShowChangelog = window.electronAPI.onShowChangelog((_version: string) => {
       setShowChangelogModal(true);
       window.electronAPI.markChangelogSeen();
     });
@@ -440,11 +438,9 @@ function App() {
 
   const handleCloseChangelogModal = useCallback(() => {
     setShowChangelogModal(false);
-    setChangelogVersion(null);
   }, []);
 
   const handleShowChangelog = useCallback(() => {
-    setChangelogVersion(APP_VERSION);
     setShowChangelogModal(true);
   }, []);
 
@@ -1647,7 +1643,6 @@ function App() {
       {/* Changelog Modal */}
       <ChangelogModal
         visible={showChangelogModal}
-        version={changelogVersion || undefined}
         onClose={handleCloseChangelogModal}
       />
     </>
