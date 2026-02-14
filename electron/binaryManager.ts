@@ -231,14 +231,12 @@ export class BinaryManager {
           }
 
           https.get(url, (response) => {
-            // Handle redirects
-            if (response.statusCode === 301 || response.statusCode === 302) {
+            // Handle redirects (301, 302, 303, 307, 308)
+            if (response.statusCode && response.statusCode >= 300 && response.statusCode < 400 && response.headers.location) {
               const redirectUrl = response.headers.location
-              if (redirectUrl) {
-                logger.info('Following redirect', redirectUrl)
-                downloadFile(redirectUrl, redirectCount + 1)
-                return
-              }
+              logger.info('Following redirect', `${response.statusCode} -> ${redirectUrl}`)
+              downloadFile(redirectUrl, redirectCount + 1)
+              return
             }
 
             if (response.statusCode !== 200) {
@@ -422,12 +420,12 @@ export class BinaryManager {
         }
 
         https.get(downloadUrl, (response) => {
-          if (response.statusCode === 301 || response.statusCode === 302) {
+          // Handle redirects (301, 302, 303, 307, 308)
+          if (response.statusCode && response.statusCode >= 300 && response.statusCode < 400 && response.headers.location) {
             const redirectUrl = response.headers.location
-            if (redirectUrl) {
-              downloadFile(redirectUrl, redirectCount + 1)
-              return
-            }
+            logger.info('Following redirect', `${response.statusCode} -> ${redirectUrl}`)
+            downloadFile(redirectUrl, redirectCount + 1)
+            return
           }
 
           if (response.statusCode !== 200) {
@@ -527,12 +525,12 @@ export class BinaryManager {
         }
 
         https.get(downloadUrl, (response) => {
-          if (response.statusCode === 301 || response.statusCode === 302) {
+          // Handle redirects (301, 302, 303, 307, 308)
+          if (response.statusCode && response.statusCode >= 300 && response.statusCode < 400 && response.headers.location) {
             const redirectUrl = response.headers.location
-            if (redirectUrl) {
-              downloadFile(redirectUrl, redirectCount + 1)
-              return
-            }
+            logger.info('Following redirect', `${response.statusCode} -> ${redirectUrl}`)
+            downloadFile(redirectUrl, redirectCount + 1)
+            return
           }
 
           if (response.statusCode !== 200) {
