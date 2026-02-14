@@ -311,6 +311,40 @@ export class Updater extends EventEmitter {
     }
   }
 
+  // Extract filename from URL or query parameters
+  private extractFilename(url: string): string {
+    try {
+      const urlObj = new URL(url)
+
+      // Check for filename in query parameters (Azure blob storage pattern)
+      const filenameParam = urlObj.searchParams.get('filename')
+      if (filenameParam) {
+        return filenameParam
+      }
+
+      // Check for response-content-disposition header pattern
+      const disposition = urlObj.searchParams.get('response-content-disposition')
+      if (disposition) {
+        const match = disposition.match(/filename="?([^";]+)"?/i)
+        if (match) {
+          return match[1]
+        }
+      }
+
+      // Fall back to last path segment without query params
+      const pathParts = urlObj.pathname.split('/')
+      const lastPart = pathParts[pathParts.length - 1]
+      if (lastPart && lastPart.length < 100) {
+        return lastPart
+      }
+    } catch {
+      // URL parsing failed, use fallback
+    }
+
+    // Ultimate fallback
+    return 'update'
+  }
+
   // Download file with progress
   private downloadFile(
     url: string,
@@ -318,7 +352,7 @@ export class Updater extends EventEmitter {
   ): Promise<string> {
     return new Promise((resolve, reject) => {
       // Determine download path
-      const fileName = url.split('/').pop() || 'update'
+      const fileName = this.extractFilename(url)
       const downloadsPath = app.getPath('downloads')
       const filePath = path.join(downloadsPath, fileName)
 
