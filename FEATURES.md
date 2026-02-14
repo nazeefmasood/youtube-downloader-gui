@@ -47,66 +47,82 @@
 
 ## Additional Ideas (Backlog)
 
-### 🎬 Video Processing
-- [ ] **Trim/Cut Video** - Download only a portion (start time - end time)
-- [ ] **Video Converter** - Convert to MP4, MKV, AVI, WebM after download
-- [ ] **Audio Converter** - Convert to MP3, AAC, FLAC, OPUS
-- [ ] **Video Compressor** - Reduce file size with quality presets
-- [ ] **Merge Videos** - Combine multiple downloads into one file
-- [ ] **Extract Frames** - Save video frames as images (PNG/JPG)
+### 🤖 Smart Features
+- [ ] **Duplicate Detector** - Warn if video already downloaded (by title/ID)
+- [ ] **Broken Link Checker** - Check if saved URLs are still valid
+- [ ] **Storage Predictor** - Estimate required space before downloading playlist
+- [ ] **Smart Filename** - Auto-rename based on rules (remove emojis, fix encoding)
+- [ ] **Dead Video Alert** - Notify if a saved video gets deleted from YouTube
 
-### 🎵 Audio Features
-- [ ] **Audio-only Mode** - Dedicated tab for music/podcasts
-- [ ] **Metadata Editor** - Edit ID3 tags (artist, album, cover art)
-- [ ] **Lyrics Downloader** - Fetch and embed lyrics
-- [ ] **Playlist to Album** - Convert playlists to properly tagged albums
+### 📁 Organization
+- [ ] **Auto Folder by Date** - Organize into Year/Month folders
+- [ ] **Auto Folder by Channel** - Create folder per channel name
+- [ ] **Auto Folder by Type** - Music vs Video vs Podcast folders
+- [ ] **Custom Naming Rules** - Pattern-based filenames with variables
+- [ ] **File Tags** - Add tags to downloads for filtering
 
-### 🔍 Discovery & Search
-- [ ] **In-App YouTube Search** - Search YouTube without opening browser
-- [ ] **Trending Videos** - Show trending content by region
-- [ ] **Recommended Videos** - Suggestions based on download history
-- [ ] **Channel Browser** - Browse channels within the app
+### 🔄 Sync & Backup
+- [ ] **Google Drive Backup** - Auto-backup queue and settings
+- [ ] **Dropbox Sync** - Sync download folder to Dropbox
+- [ ] **iCloud Sync** - Sync across Mac devices
+- [ ] **Export Download List** - Export as CSV/JSON/Markdown
+- [ ] **Import from Other Apps** - Import history from 4K Downloader, JDownloader
 
-### ⚡ Performance
-- [ ] **Multi-threaded Downloads** - Split files into chunks for faster speeds
-- [ ] **Proxy Support** - SOCKS5/HTTP proxy configuration
-- [ ] **VPN Integration** - Kill switch if VPN disconnects
-- [ ] **Concurrent Downloads** - Download multiple files simultaneously
+### ⏰ Scheduling
+- [ ] **Download at Specific Time** - Schedule single download
+- [ ] **Recurring Schedule** - Check channel every Monday at 9am
+- [ ] **Wake Computer** - Wake from sleep to download
+- [ ] **Shutdown After Complete** - Auto-shutdown when queue done
+- [ ] **Pause During Work Hours** - Auto-pause 9am-5pm
 
-### 🔐 Privacy & Security
-- [ ] **Private Mode** - Don't save history, clear on exit
-- [ ] **Password Protection** - Lock app with password/PIN
-- [ ] **Encrypted Storage** - Encrypt downloaded files
-- [ ] **Incognito Downloads** - Download without cookies/auth
+### 📺 Video-Specific
+- [ ] **Live Stream Recorder** - Auto-record when stream goes live
+- [ ] **Premiere Downloader** - Download video right after premiere ends
+- [ ] **Members-Only Support** - Download with YouTube membership
+- [ ] **Age-Restricted Support** - Handle age-gated content
+- [ ] **Shorts Filter** - Exclude/Include only YouTube Shorts
 
-### 🎮 Fun & Social
-- [ ] **Download Achievements** - Gamify downloads (100 videos, 10GB, etc.)
-- [ ] **Share Statistics** - Generate shareable download stats image
-- [ ] **Discord Rich Presence** - Show current download on Discord
-- [ ] **Download Battles** - Compare stats with friends
+### 🎧 Audio/Podcast
+- [ ] **Podcast RSS Generator** - Create RSS feed from playlist
+- [ ] **Podcast Player** - Built-in audio player
+- [ ] **Chapters Support** - Preserve YouTube chapters in audio
+- [ ] **Silence Remover** - Remove silent parts from audio
+- [ ] **Volume Normalizer** - Normalize audio across downloads
 
-### 📱 Mobile Companion
-- [ ] **Remote Control App** - Control desktop app from phone
-- [ ] **Sync Queue** - Sync downloads between devices
-- [ ] **Push Notifications** - Get notified on phone when done
+### 🌐 Multi-Platform
+- [ ] **Twitch Support** - Download Twitch VODs/clips
+- [ ] **Twitter/X Support** - Download videos from tweets
+- [ ] **TikTok Support** - Download TikTok videos
+- [ ] **Instagram Support** - Download Reels/Stories
+- [ ] **Reddit Support** - Download videos from Reddit
+- [ ] **Vimeo Support** - Download Vimeo videos
+- [ ] **Universal URL Detection** - Auto-detect any supported platform
 
-### 🛠️ Advanced
-- [ ] **Custom yt-dlp Arguments** - Advanced users can add custom flags
-- [ ] **Post-Download Scripts** - Run shell commands after download
-- [ ] **Webhook Notifications** - Send HTTP webhook on events
-- [ ] **CLI Mode** - Command-line interface for automation
-- [ ] **API Server** - REST API for programmatic control
+### 👨‍💻 Creator Tools
+- [ ] **Thumbnail Grabber** - Download all video thumbnails
+- [ ] **Description Saver** - Save video descriptions as text files
+- [ ] **Comment Downloader** - Export comments to JSON
+- [ ] **Caption Export** - Export all subtitle languages
+- [ ] **Chapter Markers** - Export chapters as JSON/timestamps
+- [ ] **Video Info Card** - Generate info card with all metadata
 
-### 🌍 Accessibility
-- [ ] **High Contrast Mode** - For visually impaired users
-- [ ] **Screen Reader Support** - Full ARIA labels
-- [ ] **Font Size Scaling** - Adjustable text size
+### 🏠 Home Server
+- [ ] **Headless Mode** - Run without GUI (server)
+- [ ] **Web Interface** - Browser-based control panel
+- [ ] **NAS Integration** - Direct save to network storage
+- [ ] **Plex/Jellyfin Auto-Scan** - Trigger library refresh after download
+- [ ] **Docker Image** - Official Docker container
 
-### 🎨 Personalization
-- [ ] **Custom Window Frame** - Remove OS chrome, custom titlebar
-- [ ] **Download Sounds** - Custom sound packs
-- [ ] **Avatar/Profile** - User profile with stats badge
-- [ ] **Desktop Widgets** - Floating download progress widget
+### 🔋 Power & Battery
+- [ ] **Battery Aware** - Pause downloads on low battery
+- [ ] **Power Saver Mode** - Slower downloads, less CPU
+- [ ] **UPS Detection** - Pause if on battery backup
+- [ ] **Laptop Lid Close Action** - Configure behavior
+
+### 🎯 Focus Mode
+- [ ] **Distraction Free** - Minimal UI, no animations
+- [ ] **Work Mode** - Pause downloads, hide notifications
+- [ ] **Focus Timer** - Pomodoro-style download breaks
 
 ---
 
