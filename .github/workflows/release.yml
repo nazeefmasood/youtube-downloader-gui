@@ -40,6 +40,8 @@ jobs:
 
       - name: Build application
         run: ${{ matrix.build_cmd }}
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Upload artifact (Linux)
         if: matrix.os == 'ubuntu-latest'
