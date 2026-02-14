@@ -2,6 +2,12 @@
 
 All notable changes to VidGrab will be documented in this file.
 
+## [1.3.2] - 2026-02-14
+
+### Removed
+- ffmpeg-static dependency (was causing build failures with 502 errors)
+  - Now using our own ffmpeg download system exclusively
+
 ## [1.3.1] - 2026-02-14
 
 ### Fixed
