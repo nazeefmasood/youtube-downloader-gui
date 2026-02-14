@@ -2,6 +2,13 @@
 
 All notable changes to VidGrab will be documented in this file.
 
+## [1.3.1] - 2026-02-14
+
+### Fixed
+- ENAMETOOLONG error when downloading updates on Linux
+  - Azure blob storage redirect URLs have long query parameters
+  - Now properly extracts filename from query params instead of using full URL
+
 ## [1.3.0] - 2026-02-14
 
 ### Added
