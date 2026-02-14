@@ -316,17 +316,41 @@ export class BinaryManager {
     // First try ffmpeg-static (bundled)
     try {
       // eslint-disable-next-line @typescript-eslint/no-require-imports
-      const ffmpegStatic = require('ffmpeg-static')
-      if (ffmpegStatic && fs.existsSync(ffmpegStatic)) {
-        try {
-          const version = execSync(`"${ffmpegStatic}" -version`, { timeout: 10000 })
-            .toString()
-            .split('\n')[0]
-            .trim()
-          logger.info('ffmpeg-static found', `Path: ${ffmpegStatic}, Version: ${version}`)
-          return { available: true, path: ffmpegStatic, version }
-        } catch (versionErr) {
-          logger.warn('ffmpeg-static exists but failed version check', versionErr instanceof Error ? versionErr.message : String(versionErr))
+      let ffmpegStatic = require('ffmpeg-static')
+
+      // Handle the path for packaged apps
+      if (ffmpegStatic) {
+        // In production, the path might be inside app.asar.unpacked
+        // Check if it exists at the returned path
+        if (!fs.existsSync(ffmpegStatic)) {
+          // Try alternative paths for packaged app
+          const isPackaged = app.isPackaged
+          if (isPackaged) {
+            // Try the unpacked path directly
+            const unpackedPath = ffmpegStatic.replace('app.asar', 'app.asar.unpacked')
+            if (fs.existsSync(unpackedPath)) {
+              ffmpegStatic = unpackedPath
+            } else {
+              // Try resources path
+              const resourcesPath = path.join(process.resourcesPath, 'node_modules', 'ffmpeg-static', path.basename(ffmpegStatic))
+              if (fs.existsSync(resourcesPath)) {
+                ffmpegStatic = resourcesPath
+              }
+            }
+          }
+        }
+
+        if (ffmpegStatic && fs.existsSync(ffmpegStatic)) {
+          try {
+            const version = execSync(`"${ffmpegStatic}" -version`, { timeout: 10000 })
+              .toString()
+              .split('\n')[0]
+              .trim()
+            logger.info('ffmpeg verified', `Path: ${ffmpegStatic}, Version: ${version}`)
+            return { available: true, path: ffmpegStatic, version }
+          } catch (versionErr) {
+            logger.warn('ffmpeg-static exists but failed version check', versionErr instanceof Error ? versionErr.message : String(versionErr))
+          }
         }
       }
     } catch (requireErr) {

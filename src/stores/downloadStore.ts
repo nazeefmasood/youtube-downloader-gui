@@ -1,5 +1,5 @@
 import { create } from 'zustand'
-import type { ContentInfo, VideoFormat, DownloadProgress, HistoryItem, AppSettings, QueueStatus } from '../types'
+import type { ContentInfo, VideoFormat, DownloadProgress, HistoryItem, AppSettings, QueueStatus, PotTokenStatus } from '../types'
 
 interface DownloadState {
   // URL and detection
@@ -26,6 +26,9 @@ interface DownloadState {
 
   // Queue
   queueStatus: QueueStatus
+
+  // PO Token status
+  potTokenStatus: PotTokenStatus | null
 
   // Actions
   setUrl: (url: string) => void
@@ -55,6 +58,10 @@ interface DownloadState {
   resumeQueue: () => Promise<void>
   clearQueue: () => Promise<void>
   setQueueStatus: (status: QueueStatus) => void
+
+  // PO Token actions
+  setPotTokenStatus: (status: PotTokenStatus | null) => void
+  loadPotTokenStatus: () => Promise<void>
 }
 
 const defaultSettings: AppSettings = {
@@ -68,6 +75,13 @@ const defaultSettings: AppSettings = {
   delayBetweenDownloads: 2000,
   theme: 'dark',
   fontSize: 'medium',
+  batchSize: 25,
+  batchPauseShort: 5,
+  batchPauseLong: 10,
+  batchDownloadEnabled: true,
+  potTokenEnabled: true,
+  potTokenPort: 4416,
+  potTokenTTL: 360,
 }
 
 export const useDownloadStore = create<DownloadState>((set, get) => ({
@@ -89,7 +103,10 @@ export const useDownloadStore = create<DownloadState>((set, get) => ({
     isProcessing: false,
     isPaused: false,
     currentItemId: null,
+    batchStatus: null,
+    countdownInfo: null,
   },
+  potTokenStatus: null,
 
   // Actions
   setUrl: (url) => set({ url }),
@@ -319,4 +336,16 @@ export const useDownloadStore = create<DownloadState>((set, get) => ({
   },
 
   setQueueStatus: (status) => set({ queueStatus: status }),
+
+  // PO Token actions
+  setPotTokenStatus: (status) => set({ potTokenStatus: status }),
+
+  loadPotTokenStatus: async () => {
+    try {
+      const status = await window.electronAPI.getPotTokenStatus()
+      set({ potTokenStatus: status })
+    } catch (error) {
+      console.error('Failed to load PO token status:', error)
+    }
+  },
 }))

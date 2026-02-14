@@ -7,6 +7,8 @@ export function QueueView() {
     isProcessing: false,
     isPaused: false,
     currentItemId: null,
+    batchStatus: null,
+    countdownInfo: null,
   })
 
   useEffect(() => {
