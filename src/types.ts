@@ -301,6 +301,11 @@ export interface ElectronAPI {
   onBinaryDownloadComplete: (callback: (data: { path: string }) => void) => () => void
   onBinaryDownloadError: (callback: (data: { error: string }) => void) => () => void
 
+  // FFmpeg management
+  checkFfmpeg: () => Promise<boolean>
+  downloadFfmpeg: () => Promise<boolean>
+  getFfmpegPath: () => Promise<string>
+
   // Update operations
   checkForUpdates: () => Promise<UpdateInfo | null>
   downloadUpdate: () => Promise<string | null>

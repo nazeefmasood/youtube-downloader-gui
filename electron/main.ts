@@ -670,6 +670,24 @@ ipcMain.handle('binary:status', () => {
   return binaryManager.getBinaryStatus()
 })
 
+// FFmpeg IPC handlers
+ipcMain.handle('ffmpeg:check', () => {
+  return binaryManager.isFfmpegInstalled()
+})
+
+ipcMain.handle('ffmpeg:download', async () => {
+  const result = await binaryManager.downloadFfmpeg(mainWindow)
+  if (result && downloader) {
+    // Refresh ffmpeg path in downloader after successful download
+    downloader.refreshFfmpegPath()
+  }
+  return result
+})
+
+ipcMain.handle('ffmpeg:path', () => {
+  return binaryManager.getFfmpegPath()
+})
+
 // Update IPC handlers
 ipcMain.handle('update:check', async () => {
   return await updater.checkForUpdates()
@@ -719,22 +737,51 @@ ipcMain.handle('update:reset', () => {
   updater.reset()
 })
 
-// Fetch changelog from GitHub (bypasses CORS)
+// GitHub tokens for API authentication (shared with updater)
+const GITHUB_TOKENS = [
+  process.env.GITHUB_TOKEN || '', // Primary token from environment
+  process.env.GITHUB_TOKEN_FALLBACK || '', // Fallback token from environment
+].filter(t => t.length > 0)
+
+// Fetch changelog from GitHub with token fallback
 ipcMain.handle('update:fetchChangelog', async (_event, version: string) => {
-  try {
-    const https = await import('https')
-    return new Promise((resolve, reject) => {
-      const options = {
+  // Fallback empty changelog with explicit typing
+  const fallbackChangelog: {
+    version: string
+    date: string
+    sections: {
+      added: string[]
+      changed: string[]
+      fixed: string[]
+      removed: string[]
+    }
+  } = {
+    version,
+    date: new Date().toISOString(),
+    sections: {
+      added: [],
+      changed: [],
+      fixed: [],
+      removed: [],
+    },
+  }
+
+  const tryWithToken = (tokenIndex: number): Promise<typeof fallbackChangelog> => {
+    return new Promise((resolve) => {
+      const token = tokenIndex < GITHUB_TOKENS.length ? GITHUB_TOKENS[tokenIndex] : null
+
+      const options: import('https').RequestOptions = {
         headers: {
           'User-Agent': 'VidGrab-Updater',
           'Accept': 'application/vnd.github.v3+json',
+          ...(token ? { Authorization: `Bearer ${token}` } : {}),
         },
       }
 
-      const req = https.get(
-        `https://api.github.com/repos/nazeefmasood/youtube-downloader-gui/releases/tags/v${version}`,
-        options,
-        (res) => {
+      const url = `https://api.github.com/repos/nazeefmasood/youtube-downloader-gui/releases/tags/v${version}`
+
+      const req = import('https').then(https => {
+        const req = https.get(url, options, (res) => {
           let data = ''
           res.on('data', (chunk) => { data += chunk })
           res.on('end', () => {
@@ -744,47 +791,83 @@ ipcMain.handle('update:fetchChangelog', async (_event, version: string) => {
                 const parsed = updater.parseChangelog(release.body || '', version)
                 resolve(parsed)
               } catch {
-                reject(new Error('Failed to parse changelog'))
+                resolve(fallbackChangelog)
+              }
+            } else if (res.statusCode === 404 || res.statusCode === 401) {
+              // Try next token or without 'v' prefix
+              if (tokenIndex + 1 <= GITHUB_TOKENS.length) {
+                tryWithToken(tokenIndex + 1).then(resolve)
+              } else {
+                // Try without 'v' prefix as last resort
+                tryWithoutVPrefix(resolve)
+              }
+            } else if (res.statusCode === 403) {
+              // Rate limited, try next token
+              if (tokenIndex + 1 <= GITHUB_TOKENS.length) {
+                tryWithToken(tokenIndex + 1).then(resolve)
+              } else {
+                resolve(fallbackChangelog)
               }
             } else {
-              // Try without 'v' prefix
-              const req2 = https.get(
-                `https://api.github.com/repos/nazeefmasood/youtube-downloader-gui/releases/tags/${version}`,
-                options,
-                (res2) => {
-                  let data2 = ''
-                  res2.on('data', (chunk) => { data2 += chunk })
-                  res2.on('end', () => {
-                    if (res2.statusCode === 200) {
-                      try {
-                        const release = JSON.parse(data2)
-                        const parsed = updater.parseChangelog(release.body || '', version)
-                        resolve(parsed)
-                      } catch {
-                        reject(new Error('Failed to parse changelog'))
-                      }
-                    } else {
-                      reject(new Error('Changelog not found'))
-                    }
-                  })
-                }
-              )
-              req2.on('error', reject)
-              req2.setTimeout(15000, () => {
-                req2.destroy()
-                reject(new Error('Request timeout'))
-              })
+              resolve(fallbackChangelog)
             }
           })
-        }
-      )
-      req.on('error', reject)
-      req.setTimeout(15000, () => {
-        req.destroy()
-        reject(new Error('Request timeout'))
+        })
+        req.on('error', () => resolve(fallbackChangelog))
+        req.setTimeout(15000, () => {
+          req.destroy()
+          resolve(fallbackChangelog)
+        })
       })
     })
-  } catch (err) {
-    throw err
+  }
+
+  const tryWithoutVPrefix = (resolve: (value: typeof fallbackChangelog) => void) => {
+    const tryWithTokenNoV = (tokenIndex: number) => {
+      const token = tokenIndex < GITHUB_TOKENS.length ? GITHUB_TOKENS[tokenIndex] : null
+      const options: import('https').RequestOptions = {
+        headers: {
+          'User-Agent': 'VidGrab-Updater',
+          'Accept': 'application/vnd.github.v3+json',
+          ...(token ? { Authorization: `Bearer ${token}` } : {}),
+        },
+      }
+
+      const url = `https://api.github.com/repos/nazeefmasood/youtube-downloader-gui/releases/tags/${version}`
+
+      import('https').then(https => {
+        const req = https.get(url, options, (res) => {
+          let data = ''
+          res.on('data', (chunk) => { data += chunk })
+          res.on('end', () => {
+            if (res.statusCode === 200) {
+              try {
+                const release = JSON.parse(data)
+                const parsed = updater.parseChangelog(release.body || '', version)
+                resolve(parsed)
+              } catch {
+                resolve(fallbackChangelog)
+              }
+            } else if ((res.statusCode === 404 || res.statusCode === 401) && tokenIndex + 1 <= GITHUB_TOKENS.length) {
+              tryWithTokenNoV(tokenIndex + 1)
+            } else {
+              resolve(fallbackChangelog)
+            }
+          })
+        })
+        req.on('error', () => resolve(fallbackChangelog))
+        req.setTimeout(15000, () => {
+          req.destroy()
+          resolve(fallbackChangelog)
+        })
+      })
+    }
+    tryWithTokenNoV(0)
+  }
+
+  try {
+    return await tryWithToken(0)
+  } catch {
+    return fallbackChangelog
   }
 })

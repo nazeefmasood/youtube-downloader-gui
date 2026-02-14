@@ -283,6 +283,17 @@ export class Downloader extends EventEmitter {
     return status.available
   }
 
+  // Refresh ffmpeg path after download (call this after ffmpeg is downloaded)
+  refreshFfmpegPath(): void {
+    const ffmpegStatus = binaryManager.checkFfmpeg()
+    if (ffmpegStatus.available && ffmpegStatus.path) {
+      this.ffmpegPath = ffmpegStatus.path
+      logger.info('ffmpeg path refreshed', `Path: ${this.ffmpegPath}, Version: ${ffmpegStatus.version}`)
+    } else {
+      logger.warn('ffmpeg refresh failed', 'ffmpeg still not available')
+    }
+  }
+
   // Get binary status for UI
   getBinaryStatus() {
     return binaryManager.getBinaryStatus()

@@ -200,6 +200,11 @@ contextBridge.exposeInMainWorld('electronAPI', {
     return () => ipcRenderer.removeListener('binary:download-error', subscription)
   },
 
+  // FFmpeg management
+  checkFfmpeg: () => ipcRenderer.invoke('ffmpeg:check'),
+  downloadFfmpeg: () => ipcRenderer.invoke('ffmpeg:download'),
+  getFfmpegPath: () => ipcRenderer.invoke('ffmpeg:path'),
+
   // Update operations
   checkForUpdates: () => ipcRenderer.invoke('update:check'),
   downloadUpdate: () => ipcRenderer.invoke('update:download'),
