@@ -5410,7 +5410,43 @@ body,
 .changelog-brutal-sections {
   display: flex;
   flex-direction: column;
+  gap: 24px;
+}
+
+/* Version block */
+.changelog-version-block {
+  display: flex;
+  flex-direction: column;
   gap: 16px;
+}
+
+.changelog-version-header {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding-bottom: 8px;
+  border-bottom: 1px solid var(--border);
+}
+
+.changelog-version-header .version-number {
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 14px;
+  font-weight: 700;
+  color: var(--accent);
+  padding: 4px 8px;
+  border: 1px solid var(--accent);
+}
+
+.changelog-version-header .version-date {
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 12px;
+  color: var(--text-muted);
+}
+
+.changelog-version-divider {
+  height: 1px;
+  background: linear-gradient(90deg, transparent, var(--border), transparent);
+  margin: 8px 0;
 }
 
 .changelog-brutal-section {

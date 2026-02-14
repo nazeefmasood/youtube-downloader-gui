@@ -2,6 +2,13 @@
 
 All notable changes to VidGrab will be documented in this file.
 
+## [1.3.3] - 2026-02-14
+
+### Fixed
+- Handle all HTTP redirect types (301-308) for binary downloads
+  - Previously only 301/302 were handled, causing 303 redirect failures
+  - Affects yt-dlp, ffmpeg, and app update downloads
+
 ## [1.3.2] - 2026-02-14
 
 ### Removed
