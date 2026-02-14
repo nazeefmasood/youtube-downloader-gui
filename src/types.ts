@@ -106,6 +106,7 @@ export interface QueueItem {
   contentType?: 'video' | 'audio' | 'subtitle' | 'video+sub'
   subtitleOptions?: SubtitleOptions
   subtitleDisplayNames?: string  // Human-readable names like "English, Spanish"
+  batchGroupId?: string
   error?: string
 }
 
@@ -121,6 +122,38 @@ export interface QueueStatus {
   isProcessing: boolean
   isPaused: boolean
   currentItemId: string | null
+  batchStatus: BatchStatus | null
+  countdownInfo: CountdownInfo | null
+}
+
+export interface BatchStatus {
+  active: boolean
+  groupId: string | null
+  batchNumber: number
+  totalBatches: number
+  itemsInCurrentBatch: number
+  batchSize: number
+  totalItems: number
+  completedItems: number
+  isPaused: boolean
+  pauseRemaining: number
+  pauseDuration: number
+}
+
+export interface CountdownInfo {
+  type: 'batch-pause' | 'download-delay' | 'none'
+  remaining: number
+  total: number
+  label: string
+}
+
+export interface PotTokenStatus {
+  running: boolean
+  port: number
+  lastTokenTime: string | null
+  tokenCount: number
+  error: string | null
+  uptime: number
 }
 
 // Update-related types
@@ -181,6 +214,13 @@ export interface AppSettings {
   delayBetweenDownloads: number
   theme: 'light' | 'dark' | 'system'
   fontSize: 'small' | 'medium' | 'large' | 'x-large'
+  batchSize: number
+  batchPauseShort: number
+  batchPauseLong: number
+  batchDownloadEnabled: boolean
+  potTokenEnabled: boolean
+  potTokenPort: number
+  potTokenTTL: number
 }
 
 export interface ElectronAPI {
@@ -231,6 +271,7 @@ export interface ElectronAPI {
     contentType?: 'video' | 'audio' | 'subtitle' | 'video+sub'
     subtitleOptions?: SubtitleOptions
     subtitleDisplayNames?: string
+    batchGroupId?: string
   }) => Promise<{ id: string; position: number }>
   removeFromQueue: (id: string) => Promise<void>
   cancelQueueItem: (id: string) => Promise<void>
@@ -284,6 +325,11 @@ export interface ElectronAPI {
   onShowChangelog: (callback: (version: string) => void) => () => void
   onLinuxDeb: (callback: (filePath: string) => void) => () => void
   onLinuxAppImage: (callback: (filePath: string) => void) => () => void
+
+  // PO Token operations
+  getPotTokenStatus: () => Promise<PotTokenStatus>
+  restartPotTokenServer: () => Promise<void>
+  onPotTokenStatus: (callback: (status: PotTokenStatus) => void) => () => void
 }
 
 declare global {

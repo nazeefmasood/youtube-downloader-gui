@@ -5,6 +5,7 @@ import { EventEmitter } from 'events'
 import { app } from 'electron'
 import { logger } from './logger'
 import { binaryManager } from './binaryManager'
+import { fetchPotToken } from './potTokenServer'
 
 interface ContentInfo {
   type: 'video' | 'playlist' | 'channel'
@@ -287,6 +288,23 @@ export class Downloader extends EventEmitter {
     return binaryManager.getBinaryStatus()
   }
 
+  private async getExtractorArgs(): Promise<string[]> {
+    try {
+      const result = await fetchPotToken()
+      if (result) {
+        logger.info('PO Token', `Using PO token (length: ${result.token.length})`)
+        return [
+          '--extractor-args',
+          `youtube:po_token=web.gvs+${result.token};visitor_data=${result.visitorData}`,
+        ]
+      }
+    } catch (err) {
+      logger.warn('PO Token', `Failed to fetch, using fallback: ${err instanceof Error ? err.message : String(err)}`)
+    }
+    // Fallback: use web client without PO token
+    return ['--extractor-args', 'youtube:player_client=web']
+  }
+
   private runYtdlp(args: string[], isDetection = false): Promise<string> {
     return new Promise((resolve, reject) => {
       logger.info('Spawning yt-dlp', `Path: ${this.ytdlpPath}\nArgs: ${args.join(' ')}\nPATH: ${process.env.PATH}`)
@@ -352,12 +370,12 @@ export class Downloader extends EventEmitter {
   }
 
   async detectUrl(url: string): Promise<ContentInfo> {
+    const extractorArgs = await this.getExtractorArgs()
     const args = [
       '--dump-json',
       '--flat-playlist',
       '--no-warnings',
-      // Use multi-client approach to avoid bot detection
-      '--extractor-args', 'youtube:player_client=default,web_creator,mweb,android',
+      ...extractorArgs,
       // Add rate limiting to avoid IP blocking
       '--sleep-requests', '1',
       '--extractor-retries', '3',
@@ -432,12 +450,12 @@ export class Downloader extends EventEmitter {
   }
 
   async getFormats(url: string): Promise<VideoFormat[]> {
+    const extractorArgs = await this.getExtractorArgs()
     const args = [
       '--dump-json',
       '--no-playlist',
       '--no-warnings',
-      // Use multi-client approach to avoid bot detection
-      '--extractor-args', 'youtube:player_client=default,web_creator,mweb,android',
+      ...extractorArgs,
       // Add rate limiting to avoid IP blocking
       '--sleep-requests', '1',
       '--extractor-retries', '3',
@@ -575,11 +593,12 @@ export class Downloader extends EventEmitter {
   }
 
   async getSubtitles(url: string): Promise<SubtitleInfo[]> {
+    const extractorArgs = await this.getExtractorArgs()
     const args = [
       '--list-subs',
       '--skip-download',
       '--no-warnings',
-      '--extractor-args', 'youtube:player_client=default,web_creator,mweb,android',
+      ...extractorArgs,
       // Add rate limiting to avoid 429 errors
       '--sleep-requests', '2',
       '--socket-timeout', '60',
@@ -669,13 +688,14 @@ export class Downloader extends EventEmitter {
 
     fs.mkdirSync(outputDir, { recursive: true })
 
+    const extractorArgs = await this.getExtractorArgs()
+
     const args: string[] = [
       '--no-warnings',
       '--newline',
       '--progress',
       '--ignore-errors',  // Continue on errors (e.g., subtitle 429) instead of failing
-      // Use multi-client approach to avoid bot detection
-      '--extractor-args', 'youtube:player_client=default,web_creator,mweb,android',
+      ...extractorArgs,
       // Retry options for handling 403/429 errors and network issues
       '--retries', '10',
       '--fragment-retries', '10',
@@ -691,11 +711,6 @@ export class Downloader extends EventEmitter {
       // FFmpeg location
       '--ffmpeg-location', this.ffmpegPath,
     ]
-
-    // NOTE: Do NOT use --cookies-from-browser chrome here.
-    // Cookies cause yt-dlp to select premium/HLS formats (e.g. format 96)
-    // that return 403 Forbidden on fragments, resulting in "downloaded file is empty".
-    // The multi-client extractor-args above are sufficient for bot detection bypass.
 
     // Output template - items are queued individually, so always single video template
     args.push('-o', path.join(outputDir, '%(title)s.%(ext)s'))

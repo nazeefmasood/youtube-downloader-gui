@@ -119,7 +119,7 @@ body,
   background: var(--bg-primary);
   color: var(--text-primary);
   font-family: 'Space Grotesk', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
-  font-size: 13px;
+  font-size: 14px;
   line-height: 1.5;
   overflow: hidden;
   -webkit-font-smoothing: antialiased;
@@ -128,8 +128,8 @@ body,
 
 /* Font Size Variations */
 [data-font-size="small"] {
-  font-size: 11px !important;
-  --base-font-size: 11px;
+  font-size: 12px !important;
+  --base-font-size: 12px;
 }
 
 [data-font-size="small"] * {
@@ -137,8 +137,8 @@ body,
 }
 
 [data-font-size="medium"] {
-  font-size: 12px !important;
-  --base-font-size: 12px;
+  font-size: 13px !important;
+  --base-font-size: 13px;
 }
 
 [data-font-size="large"] .title-bar,
@@ -940,8 +940,8 @@ body,
 }
 
 .content-thumbnail {
-  width: 180px;
-  height: 100px;
+  width: 200px;
+  height: 112px;
   background: var(--bg-tertiary);
   border: 1px solid var(--border);
   overflow: hidden;
@@ -1362,7 +1362,7 @@ body,
 }
 
 .progress-bar {
-  height: 8px;
+  height: 10px;
   background: var(--bg-primary);
   position: relative;
   overflow: hidden;
@@ -1913,8 +1913,8 @@ body,
 }
 
 .quality-size {
-  font-size: 11px;
-  color: var(--text-muted);
+  font-size: 12px;
+  color: var(--text-secondary);
   position: relative;
   z-index: 1;
 }
@@ -1926,8 +1926,8 @@ body,
   justify-content: center;
   gap: 12px;
   padding: 24px;
-  color: var(--text-muted);
-  font-size: 11px;
+  color: var(--text-secondary);
+  font-size: 12px;
 }
 
 /* Download Button */
@@ -4617,8 +4617,8 @@ body,
 }
 
 .quality-size {
-  font-size: 9px;
-  color: var(--text-muted);
+  font-size: 11px;
+  color: var(--text-secondary);
 }
 
 /* Toggle Button */
@@ -5539,23 +5539,24 @@ body,
 .changelog-brutal-btn {
   display: flex;
   align-items: center;
-  gap: 4px;
-  padding: 10px 20px;
+  gap: 8px;
+  padding: 12px 24px;
   background: var(--accent);
-  border: none;
+  border: 1px solid var(--accent);
   color: var(--bg-primary);
   font-family: inherit;
-  font-size: 11px;
+  font-size: 12px;
   font-weight: 700;
-  letter-spacing: 0.15em;
+  letter-spacing: 0.1em;
   cursor: pointer;
-  transition: all 0.15s ease;
+  transition: all 0.2s ease;
 }
 
 .changelog-brutal-btn:hover {
-  background: var(--text-primary);
-  transform: translateY(-1px);
-  box-shadow: 0 4px 12px rgba(0, 255, 136, 0.3);
+  background: var(--accent-dim);
+  border-color: var(--accent-dim);
+  transform: translateY(-2px);
+  box-shadow: 0 4px 12px var(--accent-glow);
 }
 
 .changelog-brutal-btn:active {
@@ -5564,7 +5565,7 @@ body,
 
 .btn-bracket {
   font-weight: 400;
-  opacity: 0.7;
+  opacity: 0.6;
 }
 
 .btn-text {
@@ -5628,4 +5629,120 @@ body,
 .status-indicator.checking::after {
   border-color: var(--accent);
   animation: statusRing 0.5s ease-in-out infinite;
+}
+/* ============================================
+   BATCH COUNTDOWN & PO TOKEN STATUS
+   ============================================ */
+
+/* Batch pause countdown - prominent, pulsing */
+.status-countdown {
+  color: var(--accent);
+  animation: countdownPulse 1.5s ease-in-out infinite;
+  font-weight: 500;
+}
+
+/* Download delay countdown - subtle */
+.status-countdown-small {
+  color: var(--text-muted);
+  font-size: 0.85em;
+}
+
+@keyframes countdownPulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.7; }
+}
+
+/* Batch info badge */
+.status-batch-info {
+  display: inline-block;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  padding: 2px 8px;
+  font-size: 0.7em;
+  margin-left: 8px;
+  font-weight: 500;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  color: var(--text-secondary);
+}
+
+/* PO Token indicator in status bar */
+.pot-indicator {
+  display: inline-flex;
+  align-items: center;
+  padding: 2px 6px;
+  border-radius: 4px;
+  font-size: 0.65em;
+  font-weight: 600;
+  letter-spacing: 0.1em;
+  cursor: default;
+  transition: all 0.2s ease;
+}
+
+.pot-indicator.active {
+  background: rgba(34, 197, 94, 0.15);
+  color: #22c55e;
+  border: 1px solid rgba(34, 197, 94, 0.3);
+}
+
+.pot-indicator.inactive {
+  background: rgba(239, 68, 68, 0.15);
+  color: #ef4444;
+  border: 1px solid rgba(239, 68, 68, 0.3);
+}
+
+/* PO Token status badge in settings */
+.pot-status-badge {
+  display: inline-flex;
+  align-items: center;
+  padding: 4px 10px;
+  border-radius: 4px;
+  font-size: 0.7em;
+  font-weight: 600;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+}
+
+.pot-status-badge.running {
+  background: rgba(34, 197, 94, 0.15);
+  color: #22c55e;
+  border: 1px solid rgba(34, 197, 94, 0.3);
+}
+
+.pot-status-badge.stopped {
+  background: rgba(239, 68, 68, 0.15);
+  color: #ef4444;
+  border: 1px solid rgba(239, 68, 68, 0.3);
+}
+
+/* Status indicator batch paused state */
+.status-indicator.batch-paused {
+  background: var(--warning);
+  animation: pulse 2s ease-in-out infinite;
+}
+
+.status-indicator.batch-paused::after {
+  border-color: var(--warning);
+  animation: statusRing 2s ease-in-out infinite;
+}
+
+/* Status bar right section */
+.status-bar-right {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+/* Settings error message */
+.setting-error {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 12px;
+  margin-top: 12px;
+  background: rgba(239, 68, 68, 0.1);
+  border: 1px solid rgba(239, 68, 68, 0.3);
+  border-radius: 6px;
+  color: #ef4444;
+  font-size: 0.85em;
 }

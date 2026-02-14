@@ -29,7 +29,29 @@ export interface QueueItem {
   contentType?: 'video' | 'audio' | 'subtitle' | 'video+sub'
   subtitleOptions?: SubtitleOptions
   subtitleDisplayNames?: string
+  batchGroupId?: string
   error?: string
+}
+
+export interface BatchStatus {
+  active: boolean
+  groupId: string | null
+  batchNumber: number
+  totalBatches: number
+  itemsInCurrentBatch: number
+  batchSize: number
+  totalItems: number
+  completedItems: number
+  isPaused: boolean
+  pauseRemaining: number
+  pauseDuration: number
+}
+
+export interface CountdownInfo {
+  type: 'batch-pause' | 'download-delay' | 'none'
+  remaining: number
+  total: number
+  label: string
 }
 
 export interface DownloadProgress {
@@ -49,6 +71,8 @@ export interface QueueStatus {
   isProcessing: boolean
   isPaused: boolean
   currentItemId: string | null
+  batchStatus: BatchStatus | null
+  countdownInfo: CountdownInfo | null
 }
 
 export class QueueManager extends EventEmitter {
@@ -62,6 +86,20 @@ export class QueueManager extends EventEmitter {
   private queueFilePath: string
   private saveTimeout: NodeJS.Timeout | null = null
   private readonly SAVE_DEBOUNCE_MS = 1000
+
+  // Batch download state
+  private batchGroups: Map<string, { totalItems: number; completedItems: number; sourceType: string }> = new Map()
+  private batchPauseTimer: NodeJS.Timeout | null = null
+  private batchPauseEndTime: number = 0
+  private countdownInterval: NodeJS.Timeout | null = null
+  private delayTimer: NodeJS.Timeout | null = null
+  private countdownInfo: CountdownInfo | null = null
+  private batchSettings = {
+    batchSize: 25,
+    batchPauseShort: 5, // minutes, for <=50 items
+    batchPauseLong: 10, // minutes, for >50 items
+    batchDownloadEnabled: true,
+  }
 
   constructor() {
     super()
@@ -122,8 +160,19 @@ export class QueueManager extends EventEmitter {
     this.downloadPath = downloadPath
   }
 
-  setSettings(settings: { organizeByType?: boolean; delayBetweenDownloads?: number }): void {
+  setSettings(settings: {
+    organizeByType?: boolean
+    delayBetweenDownloads?: number
+    batchSize?: number
+    batchPauseShort?: number
+    batchPauseLong?: number
+    batchDownloadEnabled?: boolean
+  }): void {
     this.settings = settings
+    if (settings.batchSize !== undefined) this.batchSettings.batchSize = settings.batchSize
+    if (settings.batchPauseShort !== undefined) this.batchSettings.batchPauseShort = settings.batchPauseShort
+    if (settings.batchPauseLong !== undefined) this.batchSettings.batchPauseLong = settings.batchPauseLong
+    if (settings.batchDownloadEnabled !== undefined) this.batchSettings.batchDownloadEnabled = settings.batchDownloadEnabled
   }
 
   private setupDownloaderListeners(): void {
@@ -145,6 +194,15 @@ export class QueueManager extends EventEmitter {
           if (result.success) {
             item.status = 'completed'
             logger.info('Download completed', item.title)
+
+            // Track batch completion
+            if (item.batchGroupId) {
+              const group = this.batchGroups.get(item.batchGroupId)
+              if (group) {
+                group.completedItems++
+              }
+            }
+
             // Emit item complete event for history
             this.emit('itemComplete', {
               id: item.id,
@@ -160,17 +218,40 @@ export class QueueManager extends EventEmitter {
             logger.error('Download failed', `${item.title}: ${result.error}`)
           }
         }
+
+        const completedItem = item
         this.currentItemId = null
         this.isProcessing = false
         // Emit update AFTER clearing isProcessing so UI shows correct state
         this.emitUpdate()
 
-        // Process next item after a short delay
-        setTimeout(() => {
+        // Check if we need a batch pause
+        if (completedItem?.batchGroupId && this.batchSettings.batchDownloadEnabled && result.success) {
+          const group = this.batchGroups.get(completedItem.batchGroupId)
+          if (group && group.completedItems > 0 && group.completedItems % this.batchSettings.batchSize === 0) {
+            // Batch boundary reached - start batch pause
+            const hasPending = this.items.some(i =>
+              i.batchGroupId === completedItem.batchGroupId && i.status === 'pending'
+            )
+            if (hasPending) {
+              this.startBatchPause(completedItem.batchGroupId)
+              return
+            }
+          }
+        }
+
+        // Normal delay between downloads
+        const delay = this.settings.delayBetweenDownloads ?? 3000
+        this.clearDelayTimer()
+        this.startDownloadDelay(delay)
+        this.delayTimer = setTimeout(() => {
+          this.clearCountdownInterval()
+          this.countdownInfo = null
+          this.emitUpdate()
           if (!this.isPaused) {
             this.processNext()
           }
-        }, 1000)
+        }, delay)
       }
     })
 
@@ -206,6 +287,158 @@ export class QueueManager extends EventEmitter {
       isProcessing: this.isProcessing,
       isPaused: this.isPaused,
       currentItemId: this.currentItemId,
+      batchStatus: this.getBatchStatus(),
+      countdownInfo: this.countdownInfo,
+    }
+  }
+
+  private getBatchStatus(): BatchStatus | null {
+    // Find the active batch group (the one being currently processed)
+    const currentItem = this.currentItemId ? this.items.find(i => i.id === this.currentItemId) : null
+    const groupId = currentItem?.batchGroupId || this.getLastActiveBatchGroupId()
+
+    if (!groupId) return null
+
+    const group = this.batchGroups.get(groupId)
+    if (!group) return null
+
+    const batchSize = this.batchSettings.batchSize
+    const batchNumber = Math.floor(group.completedItems / batchSize) + 1
+    const totalBatches = Math.ceil(group.totalItems / batchSize)
+    const itemsInCurrentBatch = group.completedItems % batchSize
+
+    return {
+      active: true,
+      groupId,
+      batchNumber,
+      totalBatches,
+      itemsInCurrentBatch,
+      batchSize,
+      totalItems: group.totalItems,
+      completedItems: group.completedItems,
+      isPaused: this.batchPauseTimer !== null,
+      pauseRemaining: this.batchPauseEndTime > 0 ? Math.max(0, this.batchPauseEndTime - Date.now()) : 0,
+      pauseDuration: 0,
+    }
+  }
+
+  private getLastActiveBatchGroupId(): string | null {
+    // Find a group that still has pending items
+    for (const [groupId] of this.batchGroups) {
+      const hasPending = this.items.some(i => i.batchGroupId === groupId && (i.status === 'pending' || i.status === 'downloading'))
+      if (hasPending) return groupId
+    }
+    return null
+  }
+
+  private startBatchPause(groupId: string): void {
+    const group = this.batchGroups.get(groupId)
+    if (!group) return
+
+    // Calculate pause duration based on total items
+    const pauseMinutes = group.totalItems <= 50
+      ? this.batchSettings.batchPauseShort
+      : this.batchSettings.batchPauseLong
+
+    // Minimum 5 minutes
+    const pauseMs = Math.max(5 * 60 * 1000, pauseMinutes * 60 * 1000)
+    this.batchPauseEndTime = Date.now() + pauseMs
+
+    logger.info('Batch pause', `Starting ${pauseMinutes}min pause for batch group ${groupId} (${group.completedItems}/${group.totalItems} completed)`)
+
+    // Update countdown info
+    this.countdownInfo = {
+      type: 'batch-pause',
+      remaining: pauseMs,
+      total: pauseMs,
+      label: `Batch pause: resuming in ${Math.ceil(pauseMs / 60000)}:00`,
+    }
+    this.emitUpdate()
+
+    // Start countdown interval (emits update every second)
+    this.countdownInterval = setInterval(() => {
+      const remaining = Math.max(0, this.batchPauseEndTime - Date.now())
+      const mins = Math.floor(remaining / 60000)
+      const secs = Math.floor((remaining % 60000) / 1000)
+      this.countdownInfo = {
+        type: 'batch-pause',
+        remaining,
+        total: pauseMs,
+        label: `Batch pause: resuming in ${mins}:${String(secs).padStart(2, '0')}`,
+      }
+      this.emitUpdate()
+
+      if (remaining <= 0) {
+        this.clearBatchTimers()
+        this.countdownInfo = null
+        this.emitUpdate()
+        // Resume processing
+        if (!this.isPaused) {
+          this.processNext()
+        }
+      }
+    }, 1000)
+
+    // Set the auto-resume timer
+    this.batchPauseTimer = setTimeout(() => {
+      this.clearBatchTimers()
+      this.countdownInfo = null
+      this.emitUpdate()
+      if (!this.isPaused) {
+        this.processNext()
+      }
+    }, pauseMs)
+  }
+
+  private startDownloadDelay(delayMs: number): void {
+    this.countdownInfo = {
+      type: 'download-delay',
+      remaining: delayMs,
+      total: delayMs,
+      label: `Next download in ${Math.ceil(delayMs / 1000)}s`,
+    }
+    this.emitUpdate()
+
+    const startTime = Date.now()
+    this.countdownInterval = setInterval(() => {
+      const elapsed = Date.now() - startTime
+      const remaining = Math.max(0, delayMs - elapsed)
+      this.countdownInfo = {
+        type: 'download-delay',
+        remaining,
+        total: delayMs,
+        label: `Next download in ${Math.ceil(remaining / 1000)}s`,
+      }
+      this.emitUpdate()
+
+      if (remaining <= 0) {
+        this.clearCountdownInterval()
+        this.countdownInfo = null
+        this.emitUpdate()
+      }
+    }, 1000)
+  }
+
+  private clearBatchTimers(): void {
+    if (this.batchPauseTimer) {
+      clearTimeout(this.batchPauseTimer)
+      this.batchPauseTimer = null
+    }
+    this.batchPauseEndTime = 0
+    this.clearCountdownInterval()
+  }
+
+  private clearCountdownInterval(): void {
+    if (this.countdownInterval) {
+      clearInterval(this.countdownInterval)
+      this.countdownInterval = null
+    }
+  }
+
+  private clearDelayTimer(): void {
+    if (this.delayTimer) {
+      clearTimeout(this.delayTimer)
+      this.delayTimer = null
     }
   }
 
@@ -219,6 +452,21 @@ export class QueueManager extends EventEmitter {
     }
 
     this.items.push(newItem)
+
+    // Track batch group
+    if (item.batchGroupId) {
+      const existing = this.batchGroups.get(item.batchGroupId)
+      if (existing) {
+        existing.totalItems++
+      } else {
+        this.batchGroups.set(item.batchGroupId, {
+          totalItems: 1,
+          completedItems: 0,
+          sourceType: item.sourceType || 'playlist',
+        })
+      }
+    }
+
     this.emitUpdate()
 
     // Start processing if not already
@@ -333,6 +581,11 @@ export class QueueManager extends EventEmitter {
 
   pause(): void {
     this.isPaused = true
+    // Cancel any batch/countdown timers
+    this.clearBatchTimers()
+    this.clearDelayTimer()
+    this.clearCountdownInterval()
+    this.countdownInfo = null
     // If currently downloading, cancel the download (yt-dlp will leave .part file for resume)
     if (this.currentItemId) {
       const item = this.items.find(i => i.id === this.currentItemId)
@@ -364,6 +617,11 @@ export class QueueManager extends EventEmitter {
   }
 
   clear(): void {
+    // Cancel batch/countdown timers
+    this.clearBatchTimers()
+    this.clearDelayTimer()
+    this.clearCountdownInterval()
+    this.countdownInfo = null
     // Cancel current download if any
     if (this.currentItemId) {
       this.downloader.cancel()
@@ -371,8 +629,9 @@ export class QueueManager extends EventEmitter {
       this.isProcessing = false
     }
 
-    // Remove all items
+    // Remove all items and batch groups
     this.items = []
+    this.batchGroups.clear()
     this.emitUpdate()
   }
 

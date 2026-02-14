@@ -132,6 +132,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
       embedInVideo: boolean
     }
     subtitleDisplayNames?: string
+    batchGroupId?: string
   }) => ipcRenderer.invoke('queue:add', item),
   removeFromQueue: (id: string) => ipcRenderer.invoke('queue:remove', id),
   cancelQueueItem: (id: string) => ipcRenderer.invoke('queue:cancel', id),
@@ -274,5 +275,21 @@ contextBridge.exposeInMainWorld('electronAPI', {
     const subscription = (_event: Electron.IpcRendererEvent, filePath: string) => callback(filePath)
     ipcRenderer.on('update:linux-appimage', subscription)
     return () => ipcRenderer.removeListener('update:linux-appimage', subscription)
+  },
+
+  // PO Token operations
+  getPotTokenStatus: () => ipcRenderer.invoke('pot:getStatus'),
+  restartPotTokenServer: () => ipcRenderer.invoke('pot:restart'),
+  onPotTokenStatus: (callback: (status: {
+    running: boolean
+    port: number
+    lastTokenTime: string | null
+    tokenCount: number
+    error: string | null
+    uptime: number
+  }) => void) => {
+    const subscription = (_event: Electron.IpcRendererEvent, status: Parameters<typeof callback>[0]) => callback(status)
+    ipcRenderer.on('pot:status', subscription)
+    return () => ipcRenderer.removeListener('pot:status', subscription)
   },
 })

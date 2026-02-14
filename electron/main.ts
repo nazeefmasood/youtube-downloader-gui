@@ -4,6 +4,7 @@ import * as fs from 'fs'
 import { Downloader } from './downloader'
 import { QueueManager, QueueStatus } from './queueManager'
 import { startHttpServer } from './httpServer'
+import { startPotTokenServer, cleanupPotTokenServer, getPotTokenStatus } from './potTokenServer'
 import { logger } from './logger'
 import { binaryManager } from './binaryManager'
 import { updater, UpdateInfo, UpdateProgress } from './updater'
@@ -92,6 +93,7 @@ let mainWindow: BrowserWindow | null = null
 let downloader: Downloader | null = null
 let queueManager: QueueManager | null = null
 let httpServer: http.Server | null = null
+let potStatusInterval: NodeJS.Timeout | null = null
 
 function getIconPath(): string {
   const isDev = process.env.NODE_ENV === 'development' || !app.isPackaged
@@ -228,6 +230,26 @@ function createWindow() {
     console.error('Failed to start HTTP server:', error)
   })
 
+  // Start PO Token server
+  const settings = store.get('settings')
+  const potEnabled = (settings.potTokenEnabled as boolean) ?? true
+  if (potEnabled) {
+    const potPort = (settings.potTokenPort as number) || 4416
+    const potTTL = (settings.potTokenTTL as number) || 360
+    startPotTokenServer(potPort, potTTL).then(() => {
+      console.log('[INFO] PO token server started')
+    }).catch((error) => {
+      console.error('[ERROR] Failed to start PO token server:', error)
+    })
+  }
+
+  // Send PO token status to renderer every 30s
+  potStatusInterval = setInterval(() => {
+    if (mainWindow && !mainWindow.isDestroyed()) {
+      mainWindow.webContents.send('pot:status', getPotTokenStatus())
+    }
+  }, 30000)
+
   // Set up updater event listeners
   updater.on('checking', () => {
     mainWindow?.webContents.send('update:checking')
@@ -283,6 +305,11 @@ app.whenReady().then(() => {
 
 // Cleanup function to close all resources
 function cleanup() {
+  if (potStatusInterval) {
+    clearInterval(potStatusInterval)
+    potStatusInterval = null
+  }
+  cleanupPotTokenServer()
   if (httpServer) {
     try {
       httpServer.close()
@@ -448,9 +475,16 @@ ipcMain.handle('settings:get', () => {
     autoStartDownload: false,
     autoBestQuality: true,
     maxConcurrentDownloads: 1,
-    delayBetweenDownloads: 3000,  // Increased from 2000 to 3000ms to avoid 429 errors
+    delayBetweenDownloads: 3000,
     theme: 'dark',
     fontSize: 'medium',
+    batchSize: 25,
+    batchPauseShort: 5,
+    batchPauseLong: 10,
+    batchDownloadEnabled: true,
+    potTokenEnabled: true,
+    potTokenPort: 4416,
+    potTokenTTL: 360,
   }
   return { ...defaults, ...store.get('settings') }
 })
@@ -534,6 +568,7 @@ ipcMain.handle('queue:add', (_event, item: {
     embedInVideo: boolean
   }
   subtitleDisplayNames?: string
+  batchGroupId?: string
 }) => {
   if (!queueManager) throw new Error('Queue manager not initialized')
 
@@ -543,6 +578,10 @@ ipcMain.handle('queue:add', (_event, item: {
   queueManager.setSettings({
     organizeByType: settings.organizeByType as boolean ?? true,
     delayBetweenDownloads: settings.delayBetweenDownloads as number ?? 2000,
+    batchSize: settings.batchSize as number ?? 25,
+    batchPauseShort: settings.batchPauseShort as number ?? 5,
+    batchPauseLong: settings.batchPauseLong as number ?? 10,
+    batchDownloadEnabled: settings.batchDownloadEnabled as boolean ?? true,
   })
 
   return queueManager.addItem(item)
@@ -591,6 +630,19 @@ ipcMain.handle('queue:retry', (_event, id: string) => {
 ipcMain.handle('queue:retryAllFailed', () => {
   if (!queueManager) throw new Error('Queue manager not initialized')
   return queueManager.retryAllFailed()
+})
+
+// PO Token IPC handlers
+ipcMain.handle('pot:getStatus', () => {
+  return getPotTokenStatus()
+})
+
+ipcMain.handle('pot:restart', async () => {
+  cleanupPotTokenServer()
+  const settings = store.get('settings')
+  const potPort = (settings.potTokenPort as number) || 4416
+  const potTTL = (settings.potTokenTTL as number) || 360
+  await startPotTokenServer(potPort, potTTL)
 })
 
 // Logger IPC handlers

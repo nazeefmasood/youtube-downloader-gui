@@ -5,7 +5,7 @@ import { AnalyzeTab } from "./components/tabs/AnalyzeTab";
 import { DownloadsTab } from "./components/tabs/DownloadsTab";
 import { UpdateModal } from "./components/UpdateModal";
 import { ChangelogModal } from "./components/ChangelogModal";
-import type { DownloadProgress, LogEntry, UpdateInfo, UpdateProgress, UpdateStatus } from "./types";
+import type { DownloadProgress, LogEntry, UpdateInfo, UpdateProgress, UpdateStatus, PotTokenStatus } from "./types";
 
 type View = "analyze" | "downloads" | "history" | "settings";
 type Theme = "dark" | "light";
@@ -36,6 +36,10 @@ function App() {
   const [showChangelogModal, setShowChangelogModal] = useState(false);
   const [changelogVersion, setChangelogVersion] = useState<string | null>(null);
   const [updateNotification, setUpdateNotification] = useState<string | null>(null);
+
+  // PO Token status
+  const [potTokenStatus, setPotTokenStatus] = useState<PotTokenStatus | null>(null);
+  const [potRestarting, setPotRestarting] = useState(false);
 
   const {
     contentInfo,
@@ -224,6 +228,17 @@ function App() {
     return () => unsubscribe();
   }, [loadHistory]);
 
+  // Subscribe to PO token status updates
+  useEffect(() => {
+    // Load initial status
+    window.electronAPI.getPotTokenStatus().then(setPotTokenStatus).catch(console.error);
+
+    const unsubscribe = window.electronAPI.onPotTokenStatus((status) => {
+      setPotTokenStatus(status);
+    });
+    return () => unsubscribe();
+  }, []);
+
   // Set up download event listeners
   useEffect(() => {
     const unsubProgress = window.electronAPI.onDownloadProgress(
@@ -375,6 +390,26 @@ function App() {
   // Handle callback when items are added to queue
   const handleAddToQueue = useCallback(() => {
     setView("downloads");
+  }, []);
+
+  // Format countdown time (seconds to M:SS)
+  const formatCountdown = useCallback((seconds: number): string => {
+    const mins = Math.floor(seconds / 60);
+    const secs = seconds % 60;
+    return `${mins}:${secs.toString().padStart(2, '0')}`;
+  }, []);
+
+  // Handle PO token server restart
+  const handleRestartPotServer = useCallback(async () => {
+    setPotRestarting(true);
+    try {
+      await window.electronAPI.restartPotTokenServer();
+      // Status will be updated via the subscription
+    } catch (error) {
+      console.error('Failed to restart PO token server:', error);
+    } finally {
+      setTimeout(() => setPotRestarting(false), 1000);
+    }
   }, []);
 
   // Global keyboard shortcuts
@@ -946,6 +981,185 @@ function App() {
             </div>
 
             <div className="settings-group">
+              <div className="settings-group-title">BATCH DOWNLOADS</div>
+
+              <div className="setting-item">
+                <div className="setting-info">
+                  <div className="setting-label">Enable Batch Pausing</div>
+                  <div className="setting-description">
+                    Pause between batches to avoid rate limits
+                  </div>
+                </div>
+                <button
+                  className={`toggle ${settings.batchDownloadEnabled !== false ? "on" : ""}`}
+                  onClick={() =>
+                    updateSettings({
+                      batchDownloadEnabled: settings.batchDownloadEnabled !== false ? false : true,
+                    })
+                  }
+                >
+                  <div className="toggle-knob" />
+                </button>
+              </div>
+
+              <div className="setting-item">
+                <div className="setting-info">
+                  <div className="setting-label">Batch Size</div>
+                  <div className="setting-description">
+                    Videos per batch before pausing
+                  </div>
+                </div>
+                <select
+                  className="setting-select"
+                  value={settings.batchSize || 25}
+                  onChange={(e) =>
+                    updateSettings({
+                      batchSize: parseInt(e.target.value),
+                    })
+                  }
+                >
+                  <option value={10}>10 videos</option>
+                  <option value={15}>15 videos</option>
+                  <option value={25}>25 videos</option>
+                  <option value={50}>50 videos</option>
+                </select>
+              </div>
+
+              <div className="setting-item">
+                <div className="setting-info">
+                  <div className="setting-label">Short Pause (≤50 videos)</div>
+                  <div className="setting-description">
+                    Pause for small playlists/channels
+                  </div>
+                </div>
+                <select
+                  className="setting-select"
+                  value={settings.batchPauseShort || 5}
+                  onChange={(e) =>
+                    updateSettings({
+                      batchPauseShort: parseInt(e.target.value),
+                    })
+                  }
+                >
+                  <option value={3}>3 minutes</option>
+                  <option value={5}>5 minutes</option>
+                  <option value={10}>10 minutes</option>
+                  <option value={15}>15 minutes</option>
+                </select>
+              </div>
+
+              <div className="setting-item">
+                <div className="setting-info">
+                  <div className="setting-label">Long Pause (&gt;50 videos)</div>
+                  <div className="setting-description">
+                    Pause for large playlists/channels
+                  </div>
+                </div>
+                <select
+                  className="setting-select"
+                  value={settings.batchPauseLong || 10}
+                  onChange={(e) =>
+                    updateSettings({
+                      batchPauseLong: parseInt(e.target.value),
+                    })
+                  }
+                >
+                  <option value={5}>5 minutes</option>
+                  <option value={10}>10 minutes</option>
+                  <option value={15}>15 minutes</option>
+                  <option value={20}>20 minutes</option>
+                  <option value={30}>30 minutes</option>
+                </select>
+              </div>
+            </div>
+
+            <div className="settings-group">
+              <div className="settings-group-title">PO TOKEN SERVER</div>
+
+              <div className="setting-item">
+                <div className="setting-info">
+                  <div className="setting-label">Server Status</div>
+                  <div className="setting-description">
+                    {potTokenStatus?.running
+                      ? `Running on port ${potTokenStatus.port} • ${potTokenStatus.tokenCount} tokens generated`
+                      : 'Not running'
+                    }
+                  </div>
+                </div>
+                <span className={`pot-status-badge ${potTokenStatus?.running ? 'running' : 'stopped'}`}>
+                  {potTokenStatus?.running ? 'RUNNING' : 'STOPPED'}
+                </span>
+              </div>
+
+              <div className="setting-item">
+                <div className="setting-info">
+                  <div className="setting-label">Enable PO Token</div>
+                  <div className="setting-description">
+                    Generate tokens to avoid bot detection
+                  </div>
+                </div>
+                <button
+                  className={`toggle ${settings.potTokenEnabled !== false ? "on" : ""}`}
+                  onClick={() =>
+                    updateSettings({
+                      potTokenEnabled: settings.potTokenEnabled !== false ? false : true,
+                    })
+                  }
+                >
+                  <div className="toggle-knob" />
+                </button>
+              </div>
+
+              <div className="setting-item">
+                <div className="setting-info">
+                  <div className="setting-label">Token Cache TTL</div>
+                  <div className="setting-description">
+                    How long to cache tokens before regenerating
+                  </div>
+                </div>
+                <select
+                  className="setting-select"
+                  value={settings.potTokenTTL || 360}
+                  onChange={(e) =>
+                    updateSettings({
+                      potTokenTTL: parseInt(e.target.value),
+                    })
+                  }
+                >
+                  <option value={60}>1 hour</option>
+                  <option value={180}>3 hours</option>
+                  <option value={360}>6 hours</option>
+                  <option value={720}>12 hours</option>
+                </select>
+              </div>
+
+              <div className="setting-item">
+                <div className="setting-info">
+                  <div className="setting-label">Restart Server</div>
+                  <div className="setting-description">
+                    Force regenerate a new token
+                  </div>
+                </div>
+                <button
+                  className="btn-secondary"
+                  onClick={handleRestartPotServer}
+                  disabled={potRestarting}
+                >
+                  {potRestarting ? 'RESTARTING...' : 'RESTART'}
+                </button>
+              </div>
+
+              {potTokenStatus?.error && (
+                <div className="setting-error">
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor">
+                    <path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm1 15h-2v-2h2v2zm0-4h-2V7h2v6z" />
+                  </svg>
+                  {potTokenStatus.error}
+                </div>
+              )}
+            </div>
+
+            <div className="settings-group">
               <div className="settings-group-title">DEBUG LOGS</div>
               <div className="setting-item">
                 <div className="setting-info">
@@ -1181,51 +1395,91 @@ function App() {
       <div className="status-bar">
         <div className="status-bar-left">
           <div
-            className={`status-indicator ${isActiveDownload ? "downloading" : ""} ${queueStatus.isPaused ? "paused" : ""} ${queueJustFinished ? "complete" : ""} ${updateStatus.checking ? "checking" : ""} ${updateStatus.downloading ? "downloading" : ""} ${updateStatus.downloaded ? "complete" : ""}`}
+            className={`status-indicator ${isActiveDownload ? "downloading" : ""} ${queueStatus.isPaused ? "paused" : ""} ${queueJustFinished ? "complete" : ""} ${queueStatus.countdownInfo?.type === 'batch-pause' ? 'batch-paused' : ''} ${updateStatus.checking ? "checking" : ""} ${updateStatus.downloading ? "downloading" : ""} ${updateStatus.downloaded ? "complete" : ""}`}
           />
           <span>
-            {/* Update status takes priority */}
-            {updateStatus.checking && "CHECKING FOR UPDATES..."}
-            {updateStatus.downloading && updateStatus.progress &&
-              `DOWNLOADING UPDATE ${updateStatus.progress.percent}%`}
-            {updateStatus.downloaded && "UPDATE READY - CLICK TO INSTALL"}
-            {/* Regular status */}
-            {!updateStatus.checking && !updateStatus.downloading && !updateStatus.downloaded && (
+            {/* Batch pause countdown - highest priority */}
+            {queueStatus.countdownInfo?.type === 'batch-pause' && (
+              <span className="status-countdown">
+                Batch pause: resuming in {formatCountdown(queueStatus.countdownInfo.remaining)}
+                {queueStatus.batchStatus && (
+                  <span className="status-batch-info">
+                    {' '}Batch {queueStatus.batchStatus.batchNumber}/{queueStatus.batchStatus.totalBatches} ({queueStatus.batchStatus.completedItems}/{queueStatus.batchStatus.totalItems})
+                  </span>
+                )}
+              </span>
+            )}
+            {/* Download delay countdown */}
+            {queueStatus.countdownInfo?.type === 'download-delay' && (
+              <span className="status-countdown-small">
+                Next download in {queueStatus.countdownInfo.remaining}s
+              </span>
+            )}
+            {/* No countdown - show regular status */}
+            {(!queueStatus.countdownInfo || queueStatus.countdownInfo.type === 'none') && (
               <>
-                {isActiveDownload && downloadProgress?.status === "downloading" &&
-                  `DOWNLOADING ${downloadProgress.percent?.toFixed(0)}%`}
-                {isActiveDownload && downloadProgress?.status === "merging" &&
-                  "MERGING FILES"}
-                {isActiveDownload && downloadProgress?.status === "waiting" &&
-                  "WAITING FOR NEXT"}
-                {isActiveDownload && !downloadProgress && "PROCESSING"}
-                {!isActiveDownload &&
-                  queueStatus.isPaused &&
-                  activeQueueItems.length > 0 &&
-                  "PAUSED"}
-                {!isActiveDownload &&
-                  !queueStatus.isPaused &&
-                  (showSuccess || queueJustFinished) &&
-                  `COMPLETE (${completedQueueItems.length} DOWNLOADED)`}
-                {!isActiveDownload &&
-                  !queueStatus.isPaused &&
-                  !showSuccess &&
-                  !queueJustFinished &&
-                  activeQueueItems.length > 0 &&
-                  `${activeQueueItems.length} IN QUEUE`}
-                {!isActiveDownload &&
-                  !queueStatus.isPaused &&
-                  !showSuccess &&
-                  !queueJustFinished &&
-                  activeQueueItems.length === 0 &&
-                  "READY"}
+                {/* Update status takes priority */}
+                {updateStatus.checking && "CHECKING FOR UPDATES..."}
+                {updateStatus.downloading && updateStatus.progress &&
+                  `DOWNLOADING UPDATE ${updateStatus.progress.percent}%`}
+                {updateStatus.downloaded && "UPDATE READY - CLICK TO INSTALL"}
+                {/* Regular status */}
+                {!updateStatus.checking && !updateStatus.downloading && !updateStatus.downloaded && (
+                  <>
+                    {isActiveDownload && downloadProgress?.status === "downloading" &&
+                      `DOWNLOADING ${downloadProgress.percent?.toFixed(0)}%`}
+                    {isActiveDownload && downloadProgress?.status === "merging" &&
+                      "MERGING FILES"}
+                    {isActiveDownload && downloadProgress?.status === "waiting" &&
+                      "WAITING FOR NEXT"}
+                    {isActiveDownload && !downloadProgress && "PROCESSING"}
+                    {!isActiveDownload &&
+                      queueStatus.isPaused &&
+                      activeQueueItems.length > 0 &&
+                      "PAUSED"}
+                    {!isActiveDownload &&
+                      !queueStatus.isPaused &&
+                      (showSuccess || queueJustFinished) &&
+                      `COMPLETE (${completedQueueItems.length} DOWNLOADED)`}
+                    {!isActiveDownload &&
+                      !queueStatus.isPaused &&
+                      !showSuccess &&
+                      !queueJustFinished &&
+                      activeQueueItems.length > 0 &&
+                      `${activeQueueItems.length} IN QUEUE`}
+                    {!isActiveDownload &&
+                      !queueStatus.isPaused &&
+                      !showSuccess &&
+                      !queueJustFinished &&
+                      activeQueueItems.length === 0 &&
+                      "READY"}
+                  </>
+                )}
               </>
             )}
           </span>
         </div>
-        <span>
-          {history.length} DOWNLOADS LOGGED // {theme.toUpperCase()} MODE
-        </span>
+        <div className="status-bar-right">
+          {/* PO Token indicator */}
+          <span
+            className={`pot-indicator ${potTokenStatus?.running ? 'active' : 'inactive'}`}
+            title={potTokenStatus?.running
+              ? `PO Token Server running on port ${potTokenStatus.port} (${potTokenStatus.tokenCount} tokens generated)`
+              : 'PO Token Server not running'
+            }
+          >
+            POT
+          </span>
+          {/* Batch info during active download */}
+          {queueStatus.batchStatus?.active && !queueStatus.countdownInfo && (
+            <span className="status-batch-info">
+              BATCH {queueStatus.batchStatus.batchNumber}/{queueStatus.batchStatus.totalBatches}
+            </span>
+          )}
+          <span>
+            {history.length} DOWNLOADS LOGGED // {theme.toUpperCase()} MODE
+          </span>
+        </div>
       </div>
 
       {/* Update Modal */}
