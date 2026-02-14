@@ -367,15 +367,13 @@ export class Updater extends EventEmitter {
           'User-Agent': 'VidGrab-Updater',
         },
       }, (response) => {
-        // Handle redirects
-        if (response.statusCode === 301 || response.statusCode === 302) {
+        // Handle redirects (301, 302, 303, 307, 308)
+        if (response.statusCode && response.statusCode >= 300 && response.statusCode < 400 && response.headers.location) {
           const redirectUrl = response.headers.location
-          if (redirectUrl) {
-            file.close()
-            fs.unlinkSync(filePath)
-            this.downloadFile(redirectUrl, onProgress).then(resolve).catch(reject)
-            return
-          }
+          file.close()
+          fs.unlinkSync(filePath)
+          this.downloadFile(redirectUrl, onProgress).then(resolve).catch(reject)
+          return
         }
 
         if (response.statusCode !== 200) {
