@@ -45,6 +45,71 @@
 
 ---
 
+## Additional Ideas (Backlog)
+
+### 🎬 Video Processing
+- [ ] **Trim/Cut Video** - Download only a portion (start time - end time)
+- [ ] **Video Converter** - Convert to MP4, MKV, AVI, WebM after download
+- [ ] **Audio Converter** - Convert to MP3, AAC, FLAC, OPUS
+- [ ] **Video Compressor** - Reduce file size with quality presets
+- [ ] **Merge Videos** - Combine multiple downloads into one file
+- [ ] **Extract Frames** - Save video frames as images (PNG/JPG)
+
+### 🎵 Audio Features
+- [ ] **Audio-only Mode** - Dedicated tab for music/podcasts
+- [ ] **Metadata Editor** - Edit ID3 tags (artist, album, cover art)
+- [ ] **Lyrics Downloader** - Fetch and embed lyrics
+- [ ] **Playlist to Album** - Convert playlists to properly tagged albums
+
+### 🔍 Discovery & Search
+- [ ] **In-App YouTube Search** - Search YouTube without opening browser
+- [ ] **Trending Videos** - Show trending content by region
+- [ ] **Recommended Videos** - Suggestions based on download history
+- [ ] **Channel Browser** - Browse channels within the app
+
+### ⚡ Performance
+- [ ] **Multi-threaded Downloads** - Split files into chunks for faster speeds
+- [ ] **Proxy Support** - SOCKS5/HTTP proxy configuration
+- [ ] **VPN Integration** - Kill switch if VPN disconnects
+- [ ] **Concurrent Downloads** - Download multiple files simultaneously
+
+### 🔐 Privacy & Security
+- [ ] **Private Mode** - Don't save history, clear on exit
+- [ ] **Password Protection** - Lock app with password/PIN
+- [ ] **Encrypted Storage** - Encrypt downloaded files
+- [ ] **Incognito Downloads** - Download without cookies/auth
+
+### 🎮 Fun & Social
+- [ ] **Download Achievements** - Gamify downloads (100 videos, 10GB, etc.)
+- [ ] **Share Statistics** - Generate shareable download stats image
+- [ ] **Discord Rich Presence** - Show current download on Discord
+- [ ] **Download Battles** - Compare stats with friends
+
+### 📱 Mobile Companion
+- [ ] **Remote Control App** - Control desktop app from phone
+- [ ] **Sync Queue** - Sync downloads between devices
+- [ ] **Push Notifications** - Get notified on phone when done
+
+### 🛠️ Advanced
+- [ ] **Custom yt-dlp Arguments** - Advanced users can add custom flags
+- [ ] **Post-Download Scripts** - Run shell commands after download
+- [ ] **Webhook Notifications** - Send HTTP webhook on events
+- [ ] **CLI Mode** - Command-line interface for automation
+- [ ] **API Server** - REST API for programmatic control
+
+### 🌍 Accessibility
+- [ ] **High Contrast Mode** - For visually impaired users
+- [ ] **Screen Reader Support** - Full ARIA labels
+- [ ] **Font Size Scaling** - Adjustable text size
+
+### 🎨 Personalization
+- [ ] **Custom Window Frame** - Remove OS chrome, custom titlebar
+- [ ] **Download Sounds** - Custom sound packs
+- [ ] **Avatar/Profile** - User profile with stats badge
+- [ ] **Desktop Widgets** - Floating download progress widget
+
+---
+
 ## Completed Features (v1.0 - v1.3)
 
 - [x] Core video download with yt-dlp
