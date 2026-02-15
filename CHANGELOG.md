@@ -2,6 +2,13 @@
 
 All notable changes to VidGrab will be documented in this file.
 
+## [1.3.8] - 2026-02-16
+
+### Fixed
+- CHANGELOG.md not found error in production builds
+  - Added more fallback paths for file discovery
+  - Added logging to help debug path issues
+
 ## [1.3.7] - 2026-02-16
 
 ### Fixed

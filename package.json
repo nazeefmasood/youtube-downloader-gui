@@ -1,6 +1,6 @@
 {
   "name": "vidgrab",
-  "version": "1.3.7",
+  "version": "1.3.8",
   "description": "Fast & beautiful YouTube video downloader - Download videos, playlists, and channels with ease",
   "main": "dist-electron/main.js",
   "scripts": {
