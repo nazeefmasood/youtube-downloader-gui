@@ -4045,6 +4045,7 @@ body,
   display: flex;
   overflow: hidden;
   min-height: 0;
+  max-height: 100%;
 }
 
 /* Preview Panel (Left) */
@@ -4496,6 +4497,8 @@ body,
   display: flex;
   flex-direction: column;
   animation: slideInRight 0.4s ease-out;
+  overflow-y: auto;
+  max-height: 100%;
 }
 
 .options-section {
@@ -4528,8 +4531,7 @@ body,
 
 .section-content {
   padding: 12px;
-  max-height: 200px;
-  overflow-y: auto;
+  /* No fixed height - let content flow naturally, sidebar handles scrolling */
 }
 
 .options-loading {
@@ -4845,9 +4847,9 @@ body,
 /* Action Button */
 .options-action {
   padding: 16px;
-  margin-top: auto;
   background: var(--bg-tertiary);
   border-top: 1px solid var(--border);
+  /* Button scrolls with content now */
 }
 
 .add-queue-btn {
