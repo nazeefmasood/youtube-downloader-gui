@@ -2,6 +2,14 @@
 
 All notable changes to VidGrab will be documented in this file.
 
+## [1.3.7] - 2026-02-16
+
+### Fixed
+- Sidebar not scrollable on small screens
+  - Removed fixed max-height from quality sections
+  - Made whole sidebar scrollable instead
+  - Users can now scroll to access audio, subtitle, and download button
+
 ## [1.3.6] - 2026-02-16
 
 ### Fixed
