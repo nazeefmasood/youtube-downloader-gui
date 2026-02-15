@@ -755,24 +755,35 @@ function parseLocalChangelog(): ReturnType<typeof getEmptyChangelog>[] {
     // Try to find CHANGELOG.md in different locations
     const possiblePaths = [
       path.join(process.resourcesPath, 'CHANGELOG.md'), // Production (extraResources)
+      path.join(process.resourcesPath, 'app', 'CHANGELOG.md'), // Production alt
       path.join(__dirname, '..', 'CHANGELOG.md'), // Production alt
+      path.join(__dirname, '../../CHANGELOG.md'), // Production alt 2
+      path.join(path.dirname(app.getPath('exe')), 'resources', 'CHANGELOG.md'), // Windows installed
+      path.join(app.getAppPath(), 'CHANGELOG.md'), // App path
       path.join(process.cwd(), 'CHANGELOG.md'), // Development
     ]
 
-    let changelogPath: string | null = null
+    logger.info('Searching for CHANGELOG.md...')
     for (const p of possiblePaths) {
+      logger.info(`Checking path: ${p}`)
       if (fs.existsSync(p)) {
-        changelogPath = p
-        break
+        logger.info(`Found CHANGELOG.md at: ${p}`)
+        const content = fs.readFileSync(p, 'utf-8')
+        return parseChangelogContent(content)
       }
     }
 
-    if (!changelogPath) {
-      logger.warn('CHANGELOG.md not found')
-      return []
-    }
+    logger.warn('CHANGELOG.md not found in any location')
+    return []
+  } catch (err) {
+    logger.error('Failed to parse changelog', err instanceof Error ? err.message : String(err))
+    return []
+  }
+}
 
-    const content = fs.readFileSync(changelogPath, 'utf-8')
+// Parse changelog content string
+function parseChangelogContent(content: string): ReturnType<typeof getEmptyChangelog>[] {
+  try {
     const versions: ReturnType<typeof getEmptyChangelog>[] = []
 
     // Split by version headers
@@ -827,7 +838,7 @@ function parseLocalChangelog(): ReturnType<typeof getEmptyChangelog>[] {
     logger.info('Changelog loaded', `${versions.length} versions`)
     return versions
   } catch (err) {
-    logger.error('Failed to parse changelog', err instanceof Error ? err.message : String(err))
+    logger.error('Failed to parse changelog content', err instanceof Error ? err.message : String(err))
     return []
   }
 }
