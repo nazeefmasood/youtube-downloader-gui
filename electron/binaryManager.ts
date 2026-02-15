@@ -312,11 +312,11 @@ export class BinaryManager {
 
               response.pipe(file)
 
-              file.on('finish', () => {
-                file.close()
+              // Wait for the 'close' event which ensures file is fully written and closed
+              file.on('close', () => {
+                logger.info('File stream closed, waiting for filesystem to sync...')
 
-                // Wait for file system to fully flush the file to disk
-                // Increased delay for slower systems
+                // Wait for file system to fully flush and release the file
                 setTimeout(() => {
                   // Make executable on Unix systems
                   if (binary.executable) {
@@ -342,7 +342,7 @@ export class BinaryManager {
                     path: targetPath,
                   })
                   resolve(true)
-                }, 1000) // Increased from 500ms to 1000ms
+                }, 2000) // Wait 2 seconds after file close for slower systems
               })
 
               file.on('error', (err) => {
@@ -507,29 +507,33 @@ export class BinaryManager {
 
             response.pipe(file)
 
-            file.on('finish', () => {
-              file.close()
+            // Wait for 'close' event to ensure file is fully written
+            file.on('close', () => {
+              logger.info('ffmpeg archive downloaded, extracting...')
 
-              // Extract the zip (macOS zip contains just 'ffmpeg' binary)
-              try {
-                // Use unzip command on macOS
-                execSync(`unzip -o "${tempPath}" -d "${this.userDataPath}"`, { timeout: 30000 })
-                fs.unlinkSync(tempPath)
+              // Wait a moment before extraction
+              setTimeout(() => {
+                // Extract the zip (macOS zip contains just 'ffmpeg' binary)
+                try {
+                  // Use unzip command on macOS
+                  execSync(`unzip -o "${tempPath}" -d "${this.userDataPath}"`, { timeout: 30000 })
+                  fs.unlinkSync(tempPath)
 
-                // Make executable
-                fs.chmodSync(targetPath, 0o755)
+                  // Make executable
+                  fs.chmodSync(targetPath, 0o755)
 
-                // Verify
-                const version = execSync(`"${targetPath}" -version`, { timeout: 10000 }).toString().split('\n')[0].trim()
-                logger.info('ffmpeg downloaded and verified', version)
-                mainWindow?.webContents.send('binary:download-complete', { path: targetPath })
-                resolve(true)
-              } catch (extractErr) {
-                const error = `Failed to extract ffmpeg: ${extractErr instanceof Error ? extractErr.message : String(extractErr)}`
-                logger.error('ffmpeg extraction failed', error)
-                try { fs.unlinkSync(tempPath) } catch { /* ignore */ }
-                tryNextUrl(urlIndex + 1)
-              }
+                  // Verify
+                  const version = execSync(`"${targetPath}" -version`, { timeout: 10000 }).toString().split('\n')[0].trim()
+                  logger.info('ffmpeg downloaded and verified', version)
+                  mainWindow?.webContents.send('binary:download-complete', { path: targetPath })
+                  resolve(true)
+                } catch (extractErr) {
+                  const error = `Failed to extract ffmpeg: ${extractErr instanceof Error ? extractErr.message : String(extractErr)}`
+                  logger.error('ffmpeg extraction failed', error)
+                  try { fs.unlinkSync(tempPath) } catch { /* ignore */ }
+                  tryNextUrl(urlIndex + 1)
+                }
+              }, 1000)
             })
 
             file.on('error', (err) => {
@@ -622,88 +626,92 @@ export class BinaryManager {
 
             response.pipe(file)
 
-            file.on('finish', () => {
-              file.close()
+            // Wait for 'close' event to ensure file is fully written
+            file.on('close', () => {
+              logger.info('ffmpeg archive downloaded, extracting...')
 
-              // Extract
-              try {
-                if (platform === 'win32') {
-                  // Windows: Extract using PowerShell
-                  const extractDir = path.join(this.userDataPath, 'ffmpeg-temp')
-                  execSync(`powershell -Command "Expand-Archive -Path '${tempPath}' -DestinationPath '${extractDir}' -Force"`, { timeout: 60000 })
+              // Wait a moment before extraction
+              setTimeout(() => {
+                // Extract
+                try {
+                  if (platform === 'win32') {
+                    // Windows: Extract using PowerShell
+                    const extractDir = path.join(this.userDataPath, 'ffmpeg-temp')
+                    execSync(`powershell -Command "Expand-Archive -Path '${tempPath}' -DestinationPath '${extractDir}' -Force"`, { timeout: 60000 })
 
-                  // Find and move ffmpeg.exe
-                  const findAndMove = (dir: string): boolean => {
-                    const items = fs.readdirSync(dir)
-                    for (const item of items) {
-                      const itemPath = path.join(dir, item)
-                      const stat = fs.statSync(itemPath)
-                      if (stat.isDirectory()) {
-                        if (findAndMove(itemPath)) return true
-                      } else if (item === 'ffmpeg.exe') {
-                        fs.copyFileSync(itemPath, targetPath)
-                        return true
+                    // Find and move ffmpeg.exe
+                    const findAndMove = (dir: string): boolean => {
+                      const items = fs.readdirSync(dir)
+                      for (const item of items) {
+                        const itemPath = path.join(dir, item)
+                        const stat = fs.statSync(itemPath)
+                        if (stat.isDirectory()) {
+                          if (findAndMove(itemPath)) return true
+                        } else if (item === 'ffmpeg.exe') {
+                          fs.copyFileSync(itemPath, targetPath)
+                          return true
+                        }
                       }
+                      return false
                     }
-                    return false
-                  }
 
-                  if (findAndMove(extractDir)) {
-                    // Cleanup
-                    fs.rmSync(extractDir, { recursive: true, force: true })
-                    fs.unlinkSync(tempPath)
+                    if (findAndMove(extractDir)) {
+                      // Cleanup
+                      fs.rmSync(extractDir, { recursive: true, force: true })
+                      fs.unlinkSync(tempPath)
 
-                    const version = execSync(`"${targetPath}" -version`, { timeout: 10000 }).toString().split('\n')[0].trim()
-                    logger.info('ffmpeg downloaded and verified', version)
-                    mainWindow?.webContents.send('binary:download-complete', { path: targetPath })
-                    resolve(true)
+                      const version = execSync(`"${targetPath}" -version`, { timeout: 10000 }).toString().split('\n')[0].trim()
+                      logger.info('ffmpeg downloaded and verified', version)
+                      mainWindow?.webContents.send('binary:download-complete', { path: targetPath })
+                      resolve(true)
+                    } else {
+                      throw new Error('ffmpeg.exe not found in archive')
+                    }
                   } else {
-                    throw new Error('ffmpeg.exe not found in archive')
-                  }
-                } else {
-                  // Linux: Extract tar.xz
-                  const extractDir = path.join(this.userDataPath, 'ffmpeg-temp')
-                  fs.mkdirSync(extractDir, { recursive: true })
-                  execSync(`tar -xf "${tempPath}" -C "${extractDir}"`, { timeout: 60000 })
+                    // Linux: Extract tar.xz
+                    const extractDir = path.join(this.userDataPath, 'ffmpeg-temp')
+                    fs.mkdirSync(extractDir, { recursive: true })
+                    execSync(`tar -xf "${tempPath}" -C "${extractDir}"`, { timeout: 60000 })
 
-                  // Find and move ffmpeg
-                  const findAndMove = (dir: string): boolean => {
-                    const items = fs.readdirSync(dir)
-                    for (const item of items) {
-                      const itemPath = path.join(dir, item)
-                      const stat = fs.statSync(itemPath)
-                      if (stat.isDirectory()) {
-                        if (findAndMove(itemPath)) return true
-                      } else if (item === 'ffmpeg') {
-                        fs.copyFileSync(itemPath, targetPath)
-                        fs.chmodSync(targetPath, 0o755)
-                        return true
+                    // Find and move ffmpeg
+                    const findAndMove = (dir: string): boolean => {
+                      const items = fs.readdirSync(dir)
+                      for (const item of items) {
+                        const itemPath = path.join(dir, item)
+                        const stat = fs.statSync(itemPath)
+                        if (stat.isDirectory()) {
+                          if (findAndMove(itemPath)) return true
+                        } else if (item === 'ffmpeg') {
+                          fs.copyFileSync(itemPath, targetPath)
+                          fs.chmodSync(targetPath, 0o755)
+                          return true
+                        }
                       }
+                      return false
                     }
-                    return false
-                  }
 
-                  if (findAndMove(extractDir)) {
-                    // Cleanup
-                    fs.rmSync(extractDir, { recursive: true, force: true })
-                    fs.unlinkSync(tempPath)
+                    if (findAndMove(extractDir)) {
+                      // Cleanup
+                      fs.rmSync(extractDir, { recursive: true, force: true })
+                      fs.unlinkSync(tempPath)
 
-                    const version = execSync(`"${targetPath}" -version`, { timeout: 10000 }).toString().split('\n')[0].trim()
-                    logger.info('ffmpeg downloaded and verified', version)
-                    mainWindow?.webContents.send('binary:download-complete', { path: targetPath })
-                    resolve(true)
-                  } else {
-                    throw new Error('ffmpeg not found in archive')
+                      const version = execSync(`"${targetPath}" -version`, { timeout: 10000 }).toString().split('\n')[0].trim()
+                      logger.info('ffmpeg downloaded and verified', version)
+                      mainWindow?.webContents.send('binary:download-complete', { path: targetPath })
+                      resolve(true)
+                    } else {
+                      throw new Error('ffmpeg not found in archive')
+                    }
                   }
+                } catch (extractErr) {
+                  const error = `Failed to extract ffmpeg: ${extractErr instanceof Error ? extractErr.message : String(extractErr)}`
+                  logger.error('ffmpeg extraction failed', error)
+                  // Cleanup on error
+                  try { fs.rmSync(path.join(this.userDataPath, 'ffmpeg-temp'), { recursive: true, force: true }) } catch { /* ignore */ }
+                  try { fs.unlinkSync(tempPath) } catch { /* ignore */ }
+                  tryNextUrl(urlIndex + 1)
                 }
-              } catch (extractErr) {
-                const error = `Failed to extract ffmpeg: ${extractErr instanceof Error ? extractErr.message : String(extractErr)}`
-                logger.error('ffmpeg extraction failed', error)
-                // Cleanup on error
-                try { fs.rmSync(path.join(this.userDataPath, 'ffmpeg-temp'), { recursive: true, force: true }) } catch { /* ignore */ }
-                try { fs.unlinkSync(tempPath) } catch { /* ignore */ }
-                tryNextUrl(urlIndex + 1)
-              }
+              }, 1500)
             })
 
             file.on('error', (err) => {
