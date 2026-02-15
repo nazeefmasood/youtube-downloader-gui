@@ -2,6 +2,14 @@
 
 All notable changes to VidGrab will be documented in this file.
 
+## [1.3.6] - 2026-02-16
+
+### Fixed
+- Binary download verification failing on Windows and Linux
+  - Changed from 'finish' to 'close' event for proper file sync
+  - Added delays before extraction/verification (1-2 seconds)
+  - Better logging for download stages
+
 ## [1.3.5] - 2026-02-16
 
 ### Fixed
