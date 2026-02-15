@@ -2,6 +2,13 @@
 
 All notable changes to VidGrab will be documented in this file.
 
+## [1.3.5] - 2026-02-16
+
+### Fixed
+- Binary verification failing on Linux after download
+  - Added chmod before verification to ensure execute permission
+  - Increased file flush delay from 500ms to 1000ms for slower systems
+
 ## [1.3.4] - 2026-02-16
 
 ### Added
