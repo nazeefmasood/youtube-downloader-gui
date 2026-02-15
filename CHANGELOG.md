@@ -2,6 +2,26 @@
 
 All notable changes to VidGrab will be documented in this file.
 
+## [1.3.4] - 2026-02-16
+
+### Added
+- GitHub Releases as primary binary source for yt-dlp and FFmpeg
+  - Downloads from our own `vidgrab-binaries` repo first
+  - Falls back to official sources if GitHub fails
+  - Eliminates HTTP 303 redirect issues on Windows
+
+### Changed
+- Improved download source fallback system
+  - Automatically tries next source on failure
+  - Better error logging for download issues
+  - More robust redirect handling
+
+### Fixed
+- HTTP 303 error when downloading FFmpeg on Windows
+  - gyan.dev redirect was not being handled correctly
+  - Now uses direct versioned URLs as fallback
+- Binary download failures now properly retry with alternative sources
+
 ## [1.3.3] - 2026-02-14
 
 ### Fixed

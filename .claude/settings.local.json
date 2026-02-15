@@ -56,7 +56,10 @@
       "Bash(sudo apt install:*)",
       "Bash(vercel:*)",
       "Bash(psql:*)",
-      "Bash(# Create:*)"
+      "Bash(# Create:*)",
+      "Bash(gh auth status:*)",
+      "Bash(sudo apt-get install:*)",
+      "Bash(git init:*)"
     ]
   }
 }
