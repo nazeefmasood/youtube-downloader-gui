@@ -11,9 +11,14 @@ import { logger } from './logger'
 const YTDLP_VERSION = '2026.02.04'
 const FFMPEG_VERSION = '7.1.1'
 
+// Your GitHub repo for hosting binaries (change this to your repo)
+const GITHUB_REPO = 'nazeefmasood/vidgrab-binaries'
+const GITHUB_RELEASE_TAG = 'v1.0.0'
+
 interface BinaryInfo {
   name: string
   url: string
+  fallbackUrl?: string // Fallback to external source
   path: string
   executable: boolean
 }
@@ -42,23 +47,30 @@ export class BinaryManager {
     const platform = process.platform
     let binaryName: string
     let url: string
+    let fallbackUrl: string
 
     // Include version in filename to track and update binaries properly
     if (platform === 'win32') {
       binaryName = `yt-dlp_${YTDLP_VERSION}.exe`
-      url = `https://github.com/yt-dlp/yt-dlp/releases/download/${YTDLP_VERSION}/yt-dlp.exe`
+      // Primary: Your GitHub Releases
+      url = `https://github.com/${GITHUB_REPO}/releases/download/${GITHUB_RELEASE_TAG}/yt-dlp.exe`
+      // Fallback: Official yt-dlp
+      fallbackUrl = `https://github.com/yt-dlp/yt-dlp/releases/download/${YTDLP_VERSION}/yt-dlp.exe`
     } else if (platform === 'darwin') {
       binaryName = `yt-dlp-macos_${YTDLP_VERSION}`
-      url = `https://github.com/yt-dlp/yt-dlp/releases/download/${YTDLP_VERSION}/yt-dlp_macos`
+      url = `https://github.com/${GITHUB_REPO}/releases/download/${GITHUB_RELEASE_TAG}/yt-dlp-macos`
+      fallbackUrl = `https://github.com/yt-dlp/yt-dlp/releases/download/${YTDLP_VERSION}/yt-dlp_macos`
     } else {
       binaryName = `yt-dlp-linux_${YTDLP_VERSION}`
-      url = `https://github.com/yt-dlp/yt-dlp/releases/download/${YTDLP_VERSION}/yt-dlp_linux`
+      url = `https://github.com/${GITHUB_REPO}/releases/download/${GITHUB_RELEASE_TAG}/yt-dlp-linux`
+      fallbackUrl = `https://github.com/yt-dlp/yt-dlp/releases/download/${YTDLP_VERSION}/yt-dlp_linux`
     }
 
     // effectivePath will be determined by what exists, but default to userData for new downloads
     return {
       name: binaryName,
       url,
+      fallbackUrl,
       path: path.join(this.userDataPath, binaryName), // Default download target
       executable: platform !== 'win32',
     }
@@ -70,26 +82,37 @@ export class BinaryManager {
     const arch = process.arch
     let binaryName: string
     let url: string
+    let fallbackUrl: string
 
-    // Use gyan.dev builds (official Windows builds) and evermeetcx for macOS, johnvansickle for Linux
+    // Primary: Your GitHub Releases, Fallback: External sources
     if (platform === 'win32') {
       // Windows: Use essentials build (smaller, has all we need)
       binaryName = `ffmpeg-${FFMPEG_VERSION}-essentials_build.zip`
-      url = `https://www.gyan.dev/ffmpeg/builds/ffmpeg-release-essentials.zip`
+      // Primary: Your GitHub Releases
+      url = `https://github.com/${GITHUB_REPO}/releases/download/${GITHUB_RELEASE_TAG}/ffmpeg-essentials-windows.zip`
+      // Fallback: Direct versioned URL from gyan.dev (avoids 303 redirect issues)
+      fallbackUrl = `https://www.gyan.dev/ffmpeg/builds/packages/ffmpeg-${FFMPEG_VERSION}-essentials_build.zip`
     } else if (platform === 'darwin') {
       // macOS: Use evermeetcx builds
       binaryName = `ffmpeg-${FFMPEG_VERSION}.zip`
-      url = `https://evermeet.cx/ffmpeg/getrelease/ffmpeg/zip`
+      // Primary: Your GitHub Releases
+      url = `https://github.com/${GITHUB_REPO}/releases/download/${GITHUB_RELEASE_TAG}/ffmpeg-macos.zip`
+      // Fallback: evermeetcx
+      fallbackUrl = `https://evermeet.cx/ffmpeg/getrelease/ffmpeg/zip`
     } else {
       // Linux: Use johnvansickle builds (static)
       const linuxArch = arch === 'arm64' ? 'arm64' : 'amd64'
       binaryName = `ffmpeg-${FFMPEG_VERSION}-${linuxArch}.tar.xz`
-      url = `https://johnvansickle.com/ffmpeg/releases/ffmpeg-release-${linuxArch}-static.tar.xz`
+      // Primary: Your GitHub Releases
+      url = `https://github.com/${GITHUB_REPO}/releases/download/${GITHUB_RELEASE_TAG}/ffmpeg-linux-${linuxArch}.tar.xz`
+      // Fallback: johnvansickle
+      fallbackUrl = `https://johnvansickle.com/ffmpeg/releases/ffmpeg-release-${linuxArch}-static.tar.xz`
     }
 
     return {
       name: binaryName,
       url,
+      fallbackUrl,
       path: path.join(this.userDataPath, binaryName),
       executable: platform !== 'win32',
     }
@@ -207,7 +230,13 @@ export class BinaryManager {
   async downloadBinary(mainWindow: BrowserWindow | null): Promise<boolean> {
     const binary = this.getBinaryInfo()
 
-    logger.info('Starting binary download', binary.url)
+    // URLs to try in order: primary (GitHub), then fallback (external)
+    const urlsToTry = [binary.url]
+    if (binary.fallbackUrl) {
+      urlsToTry.push(binary.fallbackUrl)
+    }
+
+    logger.info('Starting binary download', `Primary: ${binary.url}`)
 
     try {
       // Ensure binaries directory exists in userData
@@ -221,106 +250,109 @@ export class BinaryManager {
       })
 
       return new Promise((resolve) => {
-        const downloadFile = (url: string, redirectCount = 0): void => {
-          if (redirectCount > 5) {
-            const error = 'Too many redirects'
+        const tryNextUrl = (urlIndex: number): void => {
+          if (urlIndex >= urlsToTry.length) {
+            const error = 'All download sources failed'
             logger.error('Binary download failed', error)
             mainWindow?.webContents.send('binary:download-error', { error })
             resolve(false)
             return
           }
 
-          https.get(url, (response) => {
-            // Handle redirects (301, 302, 303, 307, 308)
-            if (response.statusCode && response.statusCode >= 300 && response.statusCode < 400 && response.headers.location) {
-              const redirectUrl = response.headers.location
-              logger.info('Following redirect', `${response.statusCode} -> ${redirectUrl}`)
-              downloadFile(redirectUrl, redirectCount + 1)
+          const currentUrl = urlsToTry[urlIndex]
+          logger.info('Trying download source', `${urlIndex + 1}/${urlsToTry.length}: ${currentUrl}`)
+
+          const downloadFile = (url: string, redirectCount = 0): void => {
+            if (redirectCount > 5) {
+              logger.warn('Too many redirects, trying next source')
+              tryNextUrl(urlIndex + 1)
               return
             }
 
-            if (response.statusCode !== 200) {
-              const error = `HTTP error: ${response.statusCode}`
-              logger.error('Binary download failed', error)
-              mainWindow?.webContents.send('binary:download-error', { error })
-              resolve(false)
-              return
-            }
+            https.get(url, (response) => {
+              // Handle redirects (301, 302, 303, 307, 308)
+              if (response.statusCode && response.statusCode >= 300 && response.statusCode < 400 && response.headers.location) {
+                const redirectUrl = response.headers.location
+                logger.info('Following redirect', `${response.statusCode} -> ${redirectUrl}`)
+                downloadFile(redirectUrl, redirectCount + 1)
+                return
+              }
 
-            const totalSize = parseInt(response.headers['content-length'] || '0', 10)
-            let downloadedSize = 0
+              if (response.statusCode !== 200) {
+                logger.warn(`HTTP error ${response.statusCode} from ${url}, trying next source`)
+                tryNextUrl(urlIndex + 1)
+                return
+              }
 
-            // Always download to userDataPath (writable)
-            const targetPath = path.join(this.userDataPath, binary.name)
-            const file = fs.createWriteStream(targetPath)
+              const totalSize = parseInt(response.headers['content-length'] || '0', 10)
+              let downloadedSize = 0
 
-            response.on('data', (chunk: Buffer) => {
-              downloadedSize += chunk.length
-              const percent = totalSize > 0 ? Math.round((downloadedSize / totalSize) * 100) : 0
-              mainWindow?.webContents.send('binary:download-progress', {
-                percent,
-                downloaded: downloadedSize,
-                total: totalSize,
-              })
-            })
+              // Always download to userDataPath (writable)
+              const targetPath = path.join(this.userDataPath, binary.name)
+              const file = fs.createWriteStream(targetPath)
 
-            response.pipe(file)
-
-            file.on('finish', () => {
-              file.close()
-
-              // Wait for file system to fully flush the file to disk
-              // This prevents "Text file busy" errors when trying to execute the binary
-              setTimeout(() => {
-                // Make executable on Unix systems
-                if (binary.executable) {
-                  try {
-                    fs.chmodSync(targetPath, 0o755)
-                  } catch (err) {
-                    logger.error('Failed to make binary executable', err instanceof Error ? err : String(err))
-                  }
-                }
-
-                // Verify the downloaded binary works
-                if (!this.verifyBinary(targetPath)) {
-                  try {
-                    fs.unlinkSync(targetPath)
-                  } catch (e) { /* ignore */ }
-                  const error = 'Binary verification failed - downloaded file may be corrupted'
-                  logger.error('Binary download failed', error)
-                  mainWindow?.webContents.send('binary:download-error', { error })
-                  resolve(false)
-                  return
-                }
-
-                logger.info('Binary download complete', targetPath)
-                mainWindow?.webContents.send('binary:download-complete', {
-                  path: targetPath,
+              response.on('data', (chunk: Buffer) => {
+                downloadedSize += chunk.length
+                const percent = totalSize > 0 ? Math.round((downloadedSize / totalSize) * 100) : 0
+                mainWindow?.webContents.send('binary:download-progress', {
+                  percent,
+                  downloaded: downloadedSize,
+                  total: totalSize,
                 })
-                resolve(true)
-              }, 500) // 500ms delay to ensure file is fully written
-            })
+              })
 
-            file.on('error', (err) => {
-              try {
-                fs.unlinkSync(targetPath)
-              } catch (e) { /* ignore */ }
+              response.pipe(file)
 
-              const error = err.message
-              logger.error('Binary download failed', error)
-              mainWindow?.webContents.send('binary:download-error', { error })
-              resolve(false)
+              file.on('finish', () => {
+                file.close()
+
+                // Wait for file system to fully flush the file to disk
+                setTimeout(() => {
+                  // Make executable on Unix systems
+                  if (binary.executable) {
+                    try {
+                      fs.chmodSync(targetPath, 0o755)
+                    } catch (err) {
+                      logger.error('Failed to make binary executable', err instanceof Error ? err : String(err))
+                    }
+                  }
+
+                  // Verify the downloaded binary works
+                  if (!this.verifyBinary(targetPath)) {
+                    try {
+                      fs.unlinkSync(targetPath)
+                    } catch (e) { /* ignore */ }
+                    logger.warn('Binary verification failed, trying next source')
+                    tryNextUrl(urlIndex + 1)
+                    return
+                  }
+
+                  logger.info('Binary download complete', targetPath)
+                  mainWindow?.webContents.send('binary:download-complete', {
+                    path: targetPath,
+                  })
+                  resolve(true)
+                }, 500)
+              })
+
+              file.on('error', (err) => {
+                try {
+                  fs.unlinkSync(targetPath)
+                } catch (e) { /* ignore */ }
+                logger.error('File write error', err.message)
+                tryNextUrl(urlIndex + 1)
+              })
+            }).on('error', (err) => {
+              logger.error('Download error', err.message)
+              tryNextUrl(urlIndex + 1)
             })
-          }).on('error', (err) => {
-            logger.error('Binary download failed', err)
-            mainWindow?.webContents.send('binary:download-error', {
-              error: err.message,
-            })
-            resolve(false)
-          })
+          }
+
+          downloadFile(currentUrl)
         }
 
-        downloadFile(binary.url)
+        // Start with the first URL
+        tryNextUrl(0)
       })
     } catch (err) {
       const error = err instanceof Error ? err.message : String(err)
@@ -405,92 +437,106 @@ export class BinaryManager {
 
   // Download ffmpeg for macOS (direct binary)
   private async downloadFfmpegMacos(targetPath: string, mainWindow: BrowserWindow | null): Promise<boolean> {
-    const url = 'https://evermeet.cx/ffmpeg/getrelease/ffmpeg/zip'
+    // Get URLs from binary info (includes fallbacks)
+    const ffmpegInfo = this.getFfmpegBinaryInfo()
+    const urlsToTry = [ffmpegInfo.url]
+    if (ffmpegInfo.fallbackUrl) {
+      urlsToTry.push(ffmpegInfo.fallbackUrl)
+    }
 
     return new Promise((resolve) => {
       const tempPath = targetPath + '.zip'
 
-      const downloadFile = (downloadUrl: string, redirectCount = 0): void => {
-        if (redirectCount > 5) {
-          const error = 'Too many redirects'
+      const tryNextUrl = (urlIndex: number): void => {
+        if (urlIndex >= urlsToTry.length) {
+          const error = 'All ffmpeg download sources failed'
           logger.error('ffmpeg download failed', error)
           mainWindow?.webContents.send('binary:download-error', { error })
           resolve(false)
           return
         }
 
-        https.get(downloadUrl, (response) => {
-          // Handle redirects (301, 302, 303, 307, 308)
-          if (response.statusCode && response.statusCode >= 300 && response.statusCode < 400 && response.headers.location) {
-            const redirectUrl = response.headers.location
-            logger.info('Following redirect', `${response.statusCode} -> ${redirectUrl}`)
-            downloadFile(redirectUrl, redirectCount + 1)
+        const currentUrl = urlsToTry[urlIndex]
+        logger.info('Trying ffmpeg source', `${urlIndex + 1}/${urlsToTry.length}: ${currentUrl}`)
+
+        const downloadFile = (downloadUrl: string, redirectCount = 0): void => {
+          if (redirectCount > 5) {
+            logger.warn('Too many redirects, trying next source')
+            tryNextUrl(urlIndex + 1)
             return
           }
 
-          if (response.statusCode !== 200) {
-            const error = `HTTP error: ${response.statusCode}`
-            logger.error('ffmpeg download failed', error)
-            mainWindow?.webContents.send('binary:download-error', { error })
-            resolve(false)
-            return
-          }
-
-          const totalSize = parseInt(response.headers['content-length'] || '0', 10)
-          let downloadedSize = 0
-          const file = fs.createWriteStream(tempPath)
-
-          response.on('data', (chunk: Buffer) => {
-            downloadedSize += chunk.length
-            const percent = totalSize > 0 ? Math.round((downloadedSize / totalSize) * 100) : 0
-            mainWindow?.webContents.send('binary:download-progress', {
-              percent,
-              downloaded: downloadedSize,
-              total: totalSize,
-            })
-          })
-
-          response.pipe(file)
-
-          file.on('finish', () => {
-            file.close()
-
-            // Extract the zip (macOS zip contains just 'ffmpeg' binary)
-            try {
-              // Use unzip command on macOS
-              execSync(`unzip -o "${tempPath}" -d "${this.userDataPath}"`, { timeout: 30000 })
-              fs.unlinkSync(tempPath)
-
-              // Make executable
-              fs.chmodSync(targetPath, 0o755)
-
-              // Verify
-              const version = execSync(`"${targetPath}" -version`, { timeout: 10000 }).toString().split('\n')[0].trim()
-              logger.info('ffmpeg downloaded and verified', version)
-              mainWindow?.webContents.send('binary:download-complete', { path: targetPath })
-              resolve(true)
-            } catch (extractErr) {
-              const error = `Failed to extract ffmpeg: ${extractErr instanceof Error ? extractErr.message : String(extractErr)}`
-              logger.error('ffmpeg extraction failed', error)
-              mainWindow?.webContents.send('binary:download-error', { error })
-              resolve(false)
+          https.get(downloadUrl, (response) => {
+            // Handle redirects (301, 302, 303, 307, 308)
+            if (response.statusCode && response.statusCode >= 300 && response.statusCode < 400 && response.headers.location) {
+              const redirectUrl = response.headers.location
+              logger.info('Following redirect', `${response.statusCode} -> ${redirectUrl}`)
+              downloadFile(redirectUrl, redirectCount + 1)
+              return
             }
-          })
 
-          file.on('error', (err) => {
-            try { fs.unlinkSync(tempPath) } catch { /* ignore */ }
-            logger.error('ffmpeg download failed', err.message)
-            mainWindow?.webContents.send('binary:download-error', { error: err.message })
-            resolve(false)
+            if (response.statusCode !== 200) {
+              logger.warn(`HTTP error ${response.statusCode}, trying next source`)
+              tryNextUrl(urlIndex + 1)
+              return
+            }
+
+            const totalSize = parseInt(response.headers['content-length'] || '0', 10)
+            let downloadedSize = 0
+            const file = fs.createWriteStream(tempPath)
+
+            response.on('data', (chunk: Buffer) => {
+              downloadedSize += chunk.length
+              const percent = totalSize > 0 ? Math.round((downloadedSize / totalSize) * 100) : 0
+              mainWindow?.webContents.send('binary:download-progress', {
+                percent,
+                downloaded: downloadedSize,
+                total: totalSize,
+              })
+            })
+
+            response.pipe(file)
+
+            file.on('finish', () => {
+              file.close()
+
+              // Extract the zip (macOS zip contains just 'ffmpeg' binary)
+              try {
+                // Use unzip command on macOS
+                execSync(`unzip -o "${tempPath}" -d "${this.userDataPath}"`, { timeout: 30000 })
+                fs.unlinkSync(tempPath)
+
+                // Make executable
+                fs.chmodSync(targetPath, 0o755)
+
+                // Verify
+                const version = execSync(`"${targetPath}" -version`, { timeout: 10000 }).toString().split('\n')[0].trim()
+                logger.info('ffmpeg downloaded and verified', version)
+                mainWindow?.webContents.send('binary:download-complete', { path: targetPath })
+                resolve(true)
+              } catch (extractErr) {
+                const error = `Failed to extract ffmpeg: ${extractErr instanceof Error ? extractErr.message : String(extractErr)}`
+                logger.error('ffmpeg extraction failed', error)
+                try { fs.unlinkSync(tempPath) } catch { /* ignore */ }
+                tryNextUrl(urlIndex + 1)
+              }
+            })
+
+            file.on('error', (err) => {
+              try { fs.unlinkSync(tempPath) } catch { /* ignore */ }
+              logger.error('File write error', err.message)
+              tryNextUrl(urlIndex + 1)
+            })
+          }).on('error', (err) => {
+            logger.error('Download error', err.message)
+            tryNextUrl(urlIndex + 1)
           })
-        }).on('error', (err) => {
-          logger.error('ffmpeg download failed', err)
-          mainWindow?.webContents.send('binary:download-error', { error: err.message })
-          resolve(false)
-        })
+        }
+
+        downloadFile(currentUrl)
       }
 
-      downloadFile(url, 0)
+      tryNextUrl(0)
     })
   }
 
@@ -499,164 +545,172 @@ export class BinaryManager {
     const platform = process.platform
     const arch = process.arch
 
-    let url: string
-    let tempExt: string
+    // Get URLs from binary info (includes fallbacks)
+    const ffmpegInfo = this.getFfmpegBinaryInfo()
+    const urlsToTry = [ffmpegInfo.url]
+    if (ffmpegInfo.fallbackUrl) {
+      urlsToTry.push(ffmpegInfo.fallbackUrl)
+    }
 
-    if (platform === 'win32') {
-      url = 'https://www.gyan.dev/ffmpeg/builds/ffmpeg-release-essentials.zip'
+    let tempExt: string
+    if (platform === 'win32' || platform === 'darwin') {
       tempExt = '.zip'
     } else {
-      // Linux
-      const linuxArch = arch === 'arm64' ? 'arm64' : 'amd64'
-      url = `https://johnvansickle.com/ffmpeg/releases/ffmpeg-release-${linuxArch}-static.tar.xz`
       tempExt = '.tar.xz'
     }
 
     return new Promise((resolve) => {
       const tempPath = targetPath + tempExt
 
-      const downloadFile = (downloadUrl: string, redirectCount = 0): void => {
-        if (redirectCount > 5) {
-          const error = 'Too many redirects'
+      const tryNextUrl = (urlIndex: number): void => {
+        if (urlIndex >= urlsToTry.length) {
+          const error = 'All ffmpeg download sources failed'
           logger.error('ffmpeg download failed', error)
           mainWindow?.webContents.send('binary:download-error', { error })
           resolve(false)
           return
         }
 
-        https.get(downloadUrl, (response) => {
-          // Handle redirects (301, 302, 303, 307, 308)
-          if (response.statusCode && response.statusCode >= 300 && response.statusCode < 400 && response.headers.location) {
-            const redirectUrl = response.headers.location
-            logger.info('Following redirect', `${response.statusCode} -> ${redirectUrl}`)
-            downloadFile(redirectUrl, redirectCount + 1)
+        const currentUrl = urlsToTry[urlIndex]
+        logger.info('Trying ffmpeg source', `${urlIndex + 1}/${urlsToTry.length}: ${currentUrl}`)
+
+        const downloadFile = (downloadUrl: string, redirectCount = 0): void => {
+          if (redirectCount > 5) {
+            logger.warn('Too many redirects, trying next source')
+            tryNextUrl(urlIndex + 1)
             return
           }
 
-          if (response.statusCode !== 200) {
-            const error = `HTTP error: ${response.statusCode}`
-            logger.error('ffmpeg download failed', error)
-            mainWindow?.webContents.send('binary:download-error', { error })
-            resolve(false)
-            return
-          }
-
-          const totalSize = parseInt(response.headers['content-length'] || '0', 10)
-          let downloadedSize = 0
-          const file = fs.createWriteStream(tempPath)
-
-          response.on('data', (chunk: Buffer) => {
-            downloadedSize += chunk.length
-            const percent = totalSize > 0 ? Math.round((downloadedSize / totalSize) * 100) : 0
-            mainWindow?.webContents.send('binary:download-progress', {
-              percent,
-              downloaded: downloadedSize,
-              total: totalSize,
-            })
-          })
-
-          response.pipe(file)
-
-          file.on('finish', () => {
-            file.close()
-
-            // Extract
-            try {
-              if (platform === 'win32') {
-                // Windows: Extract using PowerShell or built-in tools
-                // Find ffmpeg.exe in the extracted folder structure
-                const extractDir = path.join(this.userDataPath, 'ffmpeg-temp')
-                execSync(`powershell -Command "Expand-Archive -Path '${tempPath}' -DestinationPath '${extractDir}' -Force"`, { timeout: 60000 })
-
-                // Find and move ffmpeg.exe
-                const findAndMove = (dir: string): boolean => {
-                  const items = fs.readdirSync(dir)
-                  for (const item of items) {
-                    const itemPath = path.join(dir, item)
-                    const stat = fs.statSync(itemPath)
-                    if (stat.isDirectory()) {
-                      if (findAndMove(itemPath)) return true
-                    } else if (item === 'ffmpeg.exe') {
-                      fs.copyFileSync(itemPath, targetPath)
-                      return true
-                    }
-                  }
-                  return false
-                }
-
-                if (findAndMove(extractDir)) {
-                  // Cleanup
-                  fs.rmSync(extractDir, { recursive: true, force: true })
-                  fs.unlinkSync(tempPath)
-
-                  const version = execSync(`"${targetPath}" -version`, { timeout: 10000 }).toString().split('\n')[0].trim()
-                  logger.info('ffmpeg downloaded and verified', version)
-                  mainWindow?.webContents.send('binary:download-complete', { path: targetPath })
-                  resolve(true)
-                } else {
-                  throw new Error('ffmpeg.exe not found in archive')
-                }
-              } else {
-                // Linux: Extract tar.xz
-                const extractDir = path.join(this.userDataPath, 'ffmpeg-temp')
-                fs.mkdirSync(extractDir, { recursive: true })
-                execSync(`tar -xf "${tempPath}" -C "${extractDir}"`, { timeout: 60000 })
-
-                // Find and move ffmpeg
-                const findAndMove = (dir: string): boolean => {
-                  const items = fs.readdirSync(dir)
-                  for (const item of items) {
-                    const itemPath = path.join(dir, item)
-                    const stat = fs.statSync(itemPath)
-                    if (stat.isDirectory()) {
-                      if (findAndMove(itemPath)) return true
-                    } else if (item === 'ffmpeg') {
-                      fs.copyFileSync(itemPath, targetPath)
-                      fs.chmodSync(targetPath, 0o755)
-                      return true
-                    }
-                  }
-                  return false
-                }
-
-                if (findAndMove(extractDir)) {
-                  // Cleanup
-                  fs.rmSync(extractDir, { recursive: true, force: true })
-                  fs.unlinkSync(tempPath)
-
-                  const version = execSync(`"${targetPath}" -version`, { timeout: 10000 }).toString().split('\n')[0].trim()
-                  logger.info('ffmpeg downloaded and verified', version)
-                  mainWindow?.webContents.send('binary:download-complete', { path: targetPath })
-                  resolve(true)
-                } else {
-                  throw new Error('ffmpeg not found in archive')
-                }
-              }
-            } catch (extractErr) {
-              const error = `Failed to extract ffmpeg: ${extractErr instanceof Error ? extractErr.message : String(extractErr)}`
-              logger.error('ffmpeg extraction failed', error)
-              // Cleanup on error
-              try { fs.rmSync(path.join(this.userDataPath, 'ffmpeg-temp'), { recursive: true, force: true }) } catch { /* ignore */ }
-              try { fs.unlinkSync(tempPath) } catch { /* ignore */ }
-              mainWindow?.webContents.send('binary:download-error', { error })
-              resolve(false)
+          https.get(downloadUrl, (response) => {
+            // Handle redirects (301, 302, 303, 307, 308)
+            if (response.statusCode && response.statusCode >= 300 && response.statusCode < 400 && response.headers.location) {
+              const redirectUrl = response.headers.location
+              logger.info('Following redirect', `${response.statusCode} -> ${redirectUrl}`)
+              downloadFile(redirectUrl, redirectCount + 1)
+              return
             }
-          })
 
-          file.on('error', (err) => {
-            try { fs.unlinkSync(tempPath) } catch { /* ignore */ }
-            logger.error('ffmpeg download failed', err.message)
-            mainWindow?.webContents.send('binary:download-error', { error: err.message })
-            resolve(false)
+            if (response.statusCode !== 200) {
+              logger.warn(`HTTP error ${response.statusCode}, trying next source`)
+              tryNextUrl(urlIndex + 1)
+              return
+            }
+
+            const totalSize = parseInt(response.headers['content-length'] || '0', 10)
+            let downloadedSize = 0
+            const file = fs.createWriteStream(tempPath)
+
+            response.on('data', (chunk: Buffer) => {
+              downloadedSize += chunk.length
+              const percent = totalSize > 0 ? Math.round((downloadedSize / totalSize) * 100) : 0
+              mainWindow?.webContents.send('binary:download-progress', {
+                percent,
+                downloaded: downloadedSize,
+                total: totalSize,
+              })
+            })
+
+            response.pipe(file)
+
+            file.on('finish', () => {
+              file.close()
+
+              // Extract
+              try {
+                if (platform === 'win32') {
+                  // Windows: Extract using PowerShell
+                  const extractDir = path.join(this.userDataPath, 'ffmpeg-temp')
+                  execSync(`powershell -Command "Expand-Archive -Path '${tempPath}' -DestinationPath '${extractDir}' -Force"`, { timeout: 60000 })
+
+                  // Find and move ffmpeg.exe
+                  const findAndMove = (dir: string): boolean => {
+                    const items = fs.readdirSync(dir)
+                    for (const item of items) {
+                      const itemPath = path.join(dir, item)
+                      const stat = fs.statSync(itemPath)
+                      if (stat.isDirectory()) {
+                        if (findAndMove(itemPath)) return true
+                      } else if (item === 'ffmpeg.exe') {
+                        fs.copyFileSync(itemPath, targetPath)
+                        return true
+                      }
+                    }
+                    return false
+                  }
+
+                  if (findAndMove(extractDir)) {
+                    // Cleanup
+                    fs.rmSync(extractDir, { recursive: true, force: true })
+                    fs.unlinkSync(tempPath)
+
+                    const version = execSync(`"${targetPath}" -version`, { timeout: 10000 }).toString().split('\n')[0].trim()
+                    logger.info('ffmpeg downloaded and verified', version)
+                    mainWindow?.webContents.send('binary:download-complete', { path: targetPath })
+                    resolve(true)
+                  } else {
+                    throw new Error('ffmpeg.exe not found in archive')
+                  }
+                } else {
+                  // Linux: Extract tar.xz
+                  const extractDir = path.join(this.userDataPath, 'ffmpeg-temp')
+                  fs.mkdirSync(extractDir, { recursive: true })
+                  execSync(`tar -xf "${tempPath}" -C "${extractDir}"`, { timeout: 60000 })
+
+                  // Find and move ffmpeg
+                  const findAndMove = (dir: string): boolean => {
+                    const items = fs.readdirSync(dir)
+                    for (const item of items) {
+                      const itemPath = path.join(dir, item)
+                      const stat = fs.statSync(itemPath)
+                      if (stat.isDirectory()) {
+                        if (findAndMove(itemPath)) return true
+                      } else if (item === 'ffmpeg') {
+                        fs.copyFileSync(itemPath, targetPath)
+                        fs.chmodSync(targetPath, 0o755)
+                        return true
+                      }
+                    }
+                    return false
+                  }
+
+                  if (findAndMove(extractDir)) {
+                    // Cleanup
+                    fs.rmSync(extractDir, { recursive: true, force: true })
+                    fs.unlinkSync(tempPath)
+
+                    const version = execSync(`"${targetPath}" -version`, { timeout: 10000 }).toString().split('\n')[0].trim()
+                    logger.info('ffmpeg downloaded and verified', version)
+                    mainWindow?.webContents.send('binary:download-complete', { path: targetPath })
+                    resolve(true)
+                  } else {
+                    throw new Error('ffmpeg not found in archive')
+                  }
+                }
+              } catch (extractErr) {
+                const error = `Failed to extract ffmpeg: ${extractErr instanceof Error ? extractErr.message : String(extractErr)}`
+                logger.error('ffmpeg extraction failed', error)
+                // Cleanup on error
+                try { fs.rmSync(path.join(this.userDataPath, 'ffmpeg-temp'), { recursive: true, force: true }) } catch { /* ignore */ }
+                try { fs.unlinkSync(tempPath) } catch { /* ignore */ }
+                tryNextUrl(urlIndex + 1)
+              }
+            })
+
+            file.on('error', (err) => {
+              try { fs.unlinkSync(tempPath) } catch { /* ignore */ }
+              logger.error('File write error', err.message)
+              tryNextUrl(urlIndex + 1)
+            })
+          }).on('error', (err) => {
+            logger.error('Download error', err.message)
+            tryNextUrl(urlIndex + 1)
           })
-        }).on('error', (err) => {
-          logger.error('ffmpeg download failed', err)
-          mainWindow?.webContents.send('binary:download-error', { error: err.message })
-          resolve(false)
-        })
+        }
+
+        downloadFile(currentUrl)
       }
 
-      downloadFile(url, 0)
+      tryNextUrl(0)
     })
   }
 
