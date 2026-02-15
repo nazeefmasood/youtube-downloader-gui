@@ -182,6 +182,15 @@ export class BinaryManager {
         return false
       }
 
+      // Ensure executable on Unix systems before verification
+      if (process.platform !== 'win32') {
+        try {
+          fs.chmodSync(binaryPath, 0o755)
+        } catch (chmodErr) {
+          logger.warn('Could not chmod binary before verification', chmodErr instanceof Error ? chmodErr.message : String(chmodErr))
+        }
+      }
+
       // Run --version to verify binary works
       const version = execSync(`"${binaryPath}" --version`, { timeout: 15000 }).toString().trim()
       logger.info('Binary verified', `Version: ${version}`)
@@ -307,6 +316,7 @@ export class BinaryManager {
                 file.close()
 
                 // Wait for file system to fully flush the file to disk
+                // Increased delay for slower systems
                 setTimeout(() => {
                   // Make executable on Unix systems
                   if (binary.executable) {
@@ -332,7 +342,7 @@ export class BinaryManager {
                     path: targetPath,
                   })
                   resolve(true)
-                }, 500)
+                }, 1000) // Increased from 500ms to 1000ms
               })
 
               file.on('error', (err) => {
