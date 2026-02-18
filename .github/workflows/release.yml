@@ -142,7 +142,7 @@ jobs:
       - name: Create Release in Public Repo
         uses: softprops/action-gh-release@v1
         with:
-          repository: nazeefmasood/vidgrab-releases  # Your public releases repo
+          repository: nazeefmasood/grab-releases
           tag_name: ${{ github.ref_name }}
           name: VidGrab ${{ github.ref_name }}
           body_path: changelog.txt
