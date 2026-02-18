@@ -271,9 +271,11 @@ export class Downloader extends EventEmitter {
     // Use binaryManager to get ffmpeg path
     const ffmpegStatus = binaryManager.checkFfmpeg()
     if (ffmpegStatus.available && ffmpegStatus.path) {
+      logger.info('Using ffmpeg from binaryManager', `Path: ${ffmpegStatus.path}`)
       return ffmpegStatus.path
     }
     // Fallback to system ffmpeg (will fail if not installed)
+    logger.warn('ffmpeg not found in binaryManager, falling back to system ffmpeg')
     return 'ffmpeg'
   }
 
@@ -719,9 +721,12 @@ export class Downloader extends EventEmitter {
       '--socket-timeout', '60',        // Increased timeout
       // Use native HLS downloader for better m3u8 handling
       '--hls-prefer-native',
-      // FFmpeg location
-      '--ffmpeg-location', this.ffmpegPath,
     ]
+
+    // FFmpeg location - yt-dlp expects the DIRECTORY containing ffmpeg, not the executable path
+    const ffmpegDir = path.dirname(this.ffmpegPath)
+    args.push('--ffmpeg-location', ffmpegDir)
+    logger.info('FFmpeg location for yt-dlp', `Directory: ${ffmpegDir}, Executable: ${this.ffmpegPath}`)
 
     // Output template - items are queued individually, so always single video template
     args.push('-o', path.join(outputDir, '%(title)s.%(ext)s'))
