@@ -1,32 +1,33 @@
-name: Build and Release
+name: Build
 
 on:
   push:
+    branches: [main]
     tags:
       - 'v*'
-
-permissions:
-  contents: write
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
 
 jobs:
   build:
-    runs-on: ${{ matrix.os }}
     strategy:
       matrix:
         include:
           - os: ubuntu-latest
-            artifact: VidGrab-${{ github.ref_name }}.AppImage
-            artifact2: vidgrab_${{ github.ref_name }}_amd64.deb
-            build_cmd: npm run build:linux
-          - os: windows-latest
-            artifact: VidGrab Setup ${{ github.ref_name }}.exe
-            build_cmd: npm run build:win
+            platform: linux
+            build_cmd: build:linux
           - os: macos-latest
-            artifact: VidGrab-${{ github.ref_name }}-mac.zip
-            build_cmd: npm run build:mac
+            platform: mac
+            build_cmd: build:mac
+          - os: windows-latest
+            platform: win
+            build_cmd: build:win
+
+    runs-on: ${{ matrix.os }}
 
     steps:
-      - name: Checkout code
+      - name: Checkout repository
         uses: actions/checkout@v4
 
       - name: Setup Node.js
@@ -39,119 +40,92 @@ jobs:
         run: npm ci
 
       - name: Build application
-        run: ${{ matrix.build_cmd }}
+        run: npm run ${{ matrix.build_cmd }} -- --publish never
         env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          CSC_IDENTITY_AUTO_DISCOVERY: false
 
-      - name: Upload artifact (Linux)
-        if: matrix.os == 'ubuntu-latest'
+      - name: Upload Linux artifacts
+        if: matrix.platform == 'linux'
         uses: actions/upload-artifact@v4
         with:
-          name: linux-build
-          path: |
-            release/*.AppImage
-            release/*.deb
+          name: vidgrab-linux
+          path: release/*.deb
+          retention-days: 7
 
-      - name: Upload artifact (Windows)
-        if: matrix.os == 'windows-latest'
+      - name: Upload macOS artifacts
+        if: matrix.platform == 'mac'
         uses: actions/upload-artifact@v4
         with:
-          name: windows-build
-          path: release/*.exe
-
-      - name: Upload artifact (macOS)
-        if: matrix.os == 'macos-latest'
-        uses: actions/upload-artifact@v4
-        with:
-          name: macos-build
+          name: vidgrab-mac
           path: release/*.zip
+          retention-days: 7
+
+      - name: Upload Windows artifacts
+        if: matrix.platform == 'win'
+        uses: actions/upload-artifact@v4
+        with:
+          name: vidgrab-win
+          path: release/*.exe
+          retention-days: 7
 
   release:
     needs: build
     runs-on: ubuntu-latest
+    if: startsWith(github.ref, 'refs/tags/v')
+    permissions:
+      contents: write
+
     steps:
-      - name: Checkout code
+      - name: Checkout repository
         uses: actions/checkout@v4
         with:
           fetch-depth: 0
 
-      - name: Download Linux artifacts
+      - name: Download all artifacts
         uses: actions/download-artifact@v4
         with:
-          name: linux-build
-          path: release/
+          path: artifacts
 
-      - name: Download Windows artifacts
-        uses: actions/download-artifact@v4
-        with:
-          name: windows-build
-          path: release/
-
-      - name: Download macOS artifacts
-        uses: actions/download-artifact@v4
-        with:
-          name: macos-build
-          path: release/
-
-      - name: Get previous tag
-        id: prev_tag
+      - name: Prepare release files
         run: |
-          PREV_TAG=$(git describe --tags --abbrev=0 HEAD^ 2>/dev/null || echo "")
-          echo "prev_tag=$PREV_TAG" >> $GITHUB_OUTPUT
+          mkdir -p release
+          find artifacts -type f \( -name "*.exe" -o -name "*.deb" -o -name "*.zip" -o -name "*.AppImage" \) -exec cp {} release/ \;
+          ls -la release/
 
-      - name: Extract Changelog for Release
+      - name: Extract Changelog
         id: changelog
         run: |
           VERSION=${{ github.ref_name }}
           VERSION_NUM=$(echo $VERSION | sed 's/v//')
 
-          # Extract changelog section for this version from CHANGELOG.md
           if [ -f "CHANGELOG.md" ]; then
-            # Get content between this version header and the next version header
             CHANGELOG=$(sed -n "/## \[$VERSION_NUM\]/,/## \[/p" CHANGELOG.md | head -n -1 | tail -n +2)
             if [ -z "$CHANGELOG" ]; then
-              CHANGELOG="See [CHANGELOG.md](https://github.com/nazeefmasood/youtube-downloader-gui/blob/main/CHANGELOG.md) for release notes."
+              CHANGELOG="Release $VERSION"
             fi
           else
             CHANGELOG="Release $VERSION"
           fi
 
-          # Save to file
           echo "# VidGrab ${VERSION}" > changelog.txt
           echo "" >> changelog.txt
           echo "$CHANGELOG" >> changelog.txt
-          cat changelog.txt
 
-      - name: Create Release
-        uses: softprops/action-gh-release@v1
+      - name: Create Release (Private Repo)
+        uses: softprops/action-gh-release@v2
         with:
+          files: release/*
           body_path: changelog.txt
-          files: |
-            release/*.AppImage
-            release/*.deb
-            release/*.exe
-            release/*-mac.zip
-          draft: false
-          prerelease: false
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: List release files
-        run: ls -la release/
-
-      - name: Create Release in Public Repo
-        uses: softprops/action-gh-release@v1
+      - name: Create Release (Public Repo)
+        uses: softprops/action-gh-release@v2
         with:
           repository: nazeefmasood/grab-releases
           tag_name: ${{ github.ref_name }}
           name: VidGrab ${{ github.ref_name }}
+          files: release/*
           body_path: changelog.txt
-          files: |
-            release/*.AppImage
-            release/*.deb
-            release/*.exe
-            release/*-mac.zip
-          draft: false
-          prerelease: false
         env:
-          GITHUB_TOKEN: ${{ secrets.RELEASE_REPO_TOKEN }}  # PAT for public repo
+          GITHUB_TOKEN: ${{ secrets.RELEASE_REPO_TOKEN }}
