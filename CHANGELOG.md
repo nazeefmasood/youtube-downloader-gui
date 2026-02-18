@@ -2,6 +2,12 @@
 
 All notable changes to VidGrab will be documented in this file.
 
+## [1.4.1] - 2026-02-18
+
+### Changed
+- App updates now check the public releases repo (nazeefmasood/grab-releases)
+- This allows update checks to work for all users without needing access to the private repo
+
 ## [1.4.0] - 2026-02-18
 
 ### Changed
