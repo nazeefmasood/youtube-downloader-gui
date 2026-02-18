@@ -52,7 +52,8 @@ export class Updater extends EventEmitter {
 
   private downloadedFilePath: string | null = null
   private downloadRequest: http.ClientRequest | null = null
-  private readonly GITHUB_REPO = 'nazeefmasood/youtube-downloader-gui'
+  // Use public releases repo for update checks (private repo releases are mirrored here)
+  private readonly GITHUB_REPO = 'nazeefmasood/grab-releases'
   private readonly GITHUB_API_URL = `https://api.github.com/repos/${this.GITHUB_REPO}/releases/latest`
 
   // GitHub tokens for API authentication (with fallback)
