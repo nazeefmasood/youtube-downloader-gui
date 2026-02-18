@@ -2,6 +2,13 @@
 
 All notable changes to VidGrab will be documented in this file.
 
+## [1.3.9] - 2026-02-16
+
+### Fixed
+- Video and audio files being saved separately instead of merged
+  - Fixed --ffmpeg-location to use directory path instead of executable path
+  - yt-dlp expects directory containing ffmpeg, not the ffmpeg.exe path itself
+
 ## [1.3.8] - 2026-02-16
 
 ### Fixed
