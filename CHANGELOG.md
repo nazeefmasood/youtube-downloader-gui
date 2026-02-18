@@ -2,6 +2,11 @@
 
 All notable changes to VidGrab will be documented in this file.
 
+## [1.4.2] - 2026-02-18
+
+### Fixed
+- Release workflow now correctly publishes to public releases repo
+
 ## [1.4.1] - 2026-02-18
 
 ### Changed
