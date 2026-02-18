@@ -138,3 +138,20 @@ jobs:
 
       - name: List release files
         run: ls -la release/
+
+      - name: Create Release in Public Repo
+        uses: softprops/action-gh-release@v1
+        with:
+          repository: nazeefmasood/vidgrab-releases  # Your public releases repo
+          tag_name: ${{ github.ref_name }}
+          name: VidGrab ${{ github.ref_name }}
+          body_path: changelog.txt
+          files: |
+            release/*.AppImage
+            release/*.deb
+            release/*.exe
+            release/*-mac.zip
+          draft: false
+          prerelease: false
+        env:
+          GITHUB_TOKEN: ${{ secrets.RELEASE_REPO_TOKEN }}  # PAT for public repo
