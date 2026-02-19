@@ -2,6 +2,13 @@
 
 All notable changes to VidGrab will be documented in this file.
 
+## [1.4.3] - 2026-02-19
+
+### Fixed
+- Video+audio merge issue on macOS and Linux
+  - Fixed --ffmpeg-location to only be passed when using downloaded/bundled ffmpeg
+  - When using system ffmpeg, let yt-dlp find it in PATH instead of passing incorrect directory
+
 ## [1.4.2] - 2026-02-18
 
 ### Fixed

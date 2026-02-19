@@ -724,9 +724,15 @@ export class Downloader extends EventEmitter {
     ]
 
     // FFmpeg location - yt-dlp expects the DIRECTORY containing ffmpeg, not the executable path
-    const ffmpegDir = path.dirname(this.ffmpegPath)
-    args.push('--ffmpeg-location', ffmpegDir)
-    logger.info('FFmpeg location for yt-dlp', `Directory: ${ffmpegDir}, Executable: ${this.ffmpegPath}`)
+    // Only pass --ffmpeg-location if we have an absolute path (downloaded/bundled ffmpeg)
+    // If ffmpegPath is just 'ffmpeg' (system fallback), let yt-dlp find it in PATH
+    if (path.isAbsolute(this.ffmpegPath)) {
+      const ffmpegDir = path.dirname(this.ffmpegPath)
+      args.push('--ffmpeg-location', ffmpegDir)
+      logger.info('FFmpeg location for yt-dlp', `Directory: ${ffmpegDir}, Executable: ${this.ffmpegPath}`)
+    } else {
+      logger.info('Using system ffmpeg from PATH', this.ffmpegPath)
+    }
 
     // Output template - items are queued individually, so always single video template
     args.push('-o', path.join(outputDir, '%(title)s.%(ext)s'))
