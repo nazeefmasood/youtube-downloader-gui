@@ -2,6 +2,15 @@
 
 All notable changes to VidGrab will be documented in this file.
 
+## [1.4.4] - 2026-02-19
+
+### Fixed
+- Video downloads without audio when ffmpeg is unavailable
+  - Added fallback to pre-merged formats when ffmpeg isn't detected
+  - Better format selection with robust fallback chain
+- App version now displays correctly (was stuck at 1.3.3)
+  - Fixed version update script integration
+
 ## [1.4.3] - 2026-02-19
 
 ### Fixed

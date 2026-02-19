@@ -59,7 +59,9 @@
       "Bash(# Create:*)",
       "Bash(gh auth status:*)",
       "Bash(sudo apt-get install:*)",
-      "Bash(git init:*)"
+      "Bash(git init:*)",
+      "Bash(git fsck:*)",
+      "Bash(gh run list:*)"
     ]
   }
 }
