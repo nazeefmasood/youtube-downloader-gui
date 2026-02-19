@@ -44,6 +44,13 @@ function App() {
   const [potTokenStatus, setPotTokenStatus] = useState<PotTokenStatus | null>(null);
   const [potRestarting, setPotRestarting] = useState(false);
 
+  // Binary status for settings display
+  const [binaryStatus, setBinaryStatus] = useState<{
+    ytdlp: { installed: boolean; version: string | null; path: string | null };
+    ffmpeg: { available: boolean; version: string | null; path: string | null };
+    ffprobe: { available: boolean; path: string | null };
+  } | null>(null);
+
   const {
     contentInfo,
     isDownloading,
@@ -390,10 +397,12 @@ function App() {
     window.electronAPI.openLogFile();
   }, []);
 
-  // Load logs when settings view is opened
+  // Load logs and binary status when settings view is opened
   useEffect(() => {
     if (view === "settings") {
       loadErrorLogs();
+      // Fetch binary status
+      window.electronAPI.getBinaryStatus().then(setBinaryStatus).catch(console.error);
     }
   }, [view, loadErrorLogs]);
 
@@ -1300,6 +1309,72 @@ function App() {
                     <path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm1 15h-2v-2h2v2zm0-4h-2V7h2v6z" />
                   </svg>
                   {potTokenStatus.error}
+                </div>
+              )}
+            </div>
+
+            {/* System Status - Binary indicators */}
+            <div className="settings-group">
+              <div className="settings-group-title">SYSTEM STATUS</div>
+
+              <div className="setting-item">
+                <div className="setting-info">
+                  <div className="setting-label">yt-dlp</div>
+                  <div className="setting-description">
+                    {binaryStatus?.ytdlp.installed
+                      ? binaryStatus.ytdlp.version || 'Installed'
+                      : 'Not installed'
+                    }
+                  </div>
+                </div>
+                <span className={`binary-status-badge ${binaryStatus?.ytdlp.installed ? 'installed' : 'missing'}`}>
+                  {binaryStatus?.ytdlp.installed ? 'FOUND' : 'MISSING'}
+                </span>
+              </div>
+
+              <div className="setting-item">
+                <div className="setting-info">
+                  <div className="setting-label">FFmpeg</div>
+                  <div className="setting-description">
+                    {binaryStatus?.ffmpeg.available
+                      ? binaryStatus.ffmpeg.version || 'Available'
+                      : 'Not available - video/audio merge will fail'
+                    }
+                  </div>
+                </div>
+                <span className={`binary-status-badge ${binaryStatus?.ffmpeg.available ? 'installed' : 'missing'}`}>
+                  {binaryStatus?.ffmpeg.available ? 'FOUND' : 'MISSING'}
+                </span>
+              </div>
+
+              {(!binaryStatus?.ytdlp.installed || !binaryStatus?.ffmpeg.available) && (
+                <div className="setting-item">
+                  <div className="setting-info">
+                    <div className="setting-label">Download Components</div>
+                    <div className="setting-description">
+                      Click to download missing components
+                    </div>
+                  </div>
+                  <div className="binary-download-actions">
+                    {!binaryStatus?.ytdlp.installed && (
+                      <button
+                        className="btn-secondary"
+                        onClick={handleDownloadBinary}
+                        disabled={binaryDownloading}
+                      >
+                        {binaryDownloading ? `${binaryDownloadProgress}%` : 'DOWNLOAD YT-DLP'}
+                      </button>
+                    )}
+                    {!binaryStatus?.ffmpeg.available && binaryStatus?.ytdlp.installed && (
+                      <button
+                        className="btn-secondary"
+                        onClick={handleDownloadFfmpeg}
+                        disabled={ffmpegDownloading}
+                      >
+                        {ffmpegDownloading ? `${ffmpegDownloadProgress}%` : 'DOWNLOAD FFMPEG'}
+                      </button>
+                    )}
+                  </div>
                 </div>
               )}
             </div>

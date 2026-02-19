@@ -5772,6 +5772,36 @@ body,
   border: 1px solid rgba(239, 68, 68, 0.3);
 }
 
+/* Binary status badge in settings */
+.binary-status-badge {
+  display: inline-flex;
+  align-items: center;
+  padding: 4px 10px;
+  border-radius: 4px;
+  font-size: 0.7em;
+  font-weight: 600;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+}
+
+.binary-status-badge.installed {
+  background: rgba(34, 197, 94, 0.15);
+  color: #22c55e;
+  border: 1px solid rgba(34, 197, 94, 0.3);
+}
+
+.binary-status-badge.missing {
+  background: rgba(239, 68, 68, 0.15);
+  color: #ef4444;
+  border: 1px solid rgba(239, 68, 68, 0.3);
+}
+
+/* Binary download actions container */
+.binary-download-actions {
+  display: flex;
+  gap: 8px;
+}
+
 /* Status indicator batch paused state */
 .status-indicator.batch-paused {
   background: var(--warning);

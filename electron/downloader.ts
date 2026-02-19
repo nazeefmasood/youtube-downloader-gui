@@ -751,43 +751,23 @@ export class Downloader extends EventEmitter {
       args.push('--audio-format', ext)
       args.push('--audio-quality', '0') // Best quality
     } else {
-      // Video format with audio merged
-      const ffmpegAvailable = path.isAbsolute(this.ffmpegPath) || this.isFfmpegAvailable()
+      // Video format with audio merged - add robust fallbacks
+      // Parse the format to add fallbacks if not already present
       let robustFormat = format
 
-      // Only use formats that require merging if ffmpeg is available
-      if (format.includes('+') && !ffmpegAvailable) {
-        // ffmpeg not available - use pre-merged formats only
-        logger.warn('ffmpeg not available, using pre-merged format fallback')
-        if (format.includes('1080')) {
-          robustFormat = 'best[height<=1080]/best[ext=mp4][height<=1080]/best'
-        } else if (format.includes('720')) {
-          robustFormat = 'best[height<=720]/best[ext=mp4][height<=720]/best'
-        } else if (format.includes('480')) {
-          robustFormat = 'best[height<=480]/best[ext=mp4][height<=480]/best'
-        } else if (format.includes('360')) {
-          robustFormat = 'best[height<=360]/best[ext=mp4][height<=360]/best'
-        } else {
-          robustFormat = 'best[ext=mp4]/best'
-        }
-      } else if (format.includes('height<=') && !format.includes('/best')) {
-        // Add fallback chain for height-constrained formats
+      // If format contains height constraint but no proper fallback, add them
+      if (format.includes('height<=') && !format.includes('bestvideo+bestaudio/best')) {
+        // Add fallback chain: original -> any video+audio -> combined best
         robustFormat = `${format}/bestvideo+bestaudio/best`
       } else if (format === 'bestvideo+bestaudio/best') {
-        // Add intermediate fallback
-        robustFormat = 'bestvideo+bestaudio/bestvideo[ext=mp4]+bestaudio[ext=m4a]/best[ext=mp4]/best'
-      }
-
-      // Always add final fallback to any best format
-      if (!robustFormat.endsWith('/best')) {
-        robustFormat = `${robustFormat}/best[ext=mp4]/best`
+        // Already has best fallback, add intermediate fallback
+        robustFormat = 'bestvideo+bestaudio/bestvideo[ext=mp4]+bestaudio[ext=m4a]/best'
       }
 
       args.push('-f', robustFormat)
       args.push('--merge-output-format', 'mp4')
 
       logger.info('Using format selector', robustFormat)
-      logger.info('ffmpeg available for merge', String(ffmpegAvailable))
     }
 
     // Subtitle options

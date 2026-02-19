@@ -2,6 +2,13 @@
 
 All notable changes to VidGrab will be documented in this file.
 
+## [1.4.5] - 2026-02-19
+
+### Added
+- System Status section in Settings showing yt-dlp and FFmpeg status
+- Visual indicators (FOUND/MISSING badges) for binary availability
+- Download buttons for missing components directly from Settings
+
 ## [1.4.4] - 2026-02-19
 
 ### Fixed
