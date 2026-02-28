@@ -324,8 +324,13 @@ export class TrayManager {
     template.push({
       label: 'Quit VidGrab',
       click: () => {
-        // Destroy tray to prevent re-showing
+        // Destroy the window first to bypass close-to-tray prevention
+        if (this.mainWindow && !this.mainWindow.isDestroyed()) {
+          this.mainWindow.destroy()
+        }
+        // Destroy tray
         this.destroy()
+        // Now quit the app
         app.quit()
       },
     })

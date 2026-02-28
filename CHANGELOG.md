@@ -32,6 +32,9 @@ All notable changes to VidGrab will be documented in this file.
 - **URL Validation** — Now accepts all valid HTTP/HTTPS URLs, not just YouTube
 
 ### Fixed
+- **System Tray Quit** — "Quit VidGrab" from tray now properly terminates the app
+  - Fixed app staying running in background after selecting "Quit VidGrab" from tray
+  - Window is now destroyed before app.quit() to bypass close-to-tray prevention
 - **Multi-Platform URL Handling** — Non-YouTube URLs now work correctly
   - Fixed subtitle fetching using original URL instead of constructing YouTube URLs
   - Fixed format fetching for playlist items using correct platform URLs
