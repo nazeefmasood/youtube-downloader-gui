@@ -300,6 +300,7 @@ export interface ElectronAPI {
   addToHistory: (item: HistoryItem) => Promise<void>
   clearHistory: () => Promise<void>
   removeFromHistory: (id: string) => Promise<void>
+  checkDuplicate: (url: string) => Promise<{ isDuplicate: boolean; title?: string; videoId?: string }>
   onHistoryAdded: (callback: (item: HistoryItem) => void) => () => void
   onBatchComplete: (callback: (info: { batchGroupId: string }) => void) => () => void
   openFile: (filePath: string) => Promise<void>

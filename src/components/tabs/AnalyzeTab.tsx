@@ -67,6 +67,11 @@ export const AnalyzeTab = forwardRef<AnalyzeTabRef, AnalyzeTabProps>(function An
   const [detectedUrls, setDetectedUrls] = useState<DetectedUrl[]>([])
   const [isAddingBatch, setIsAddingBatch] = useState(false)
 
+  // Duplicate detection state
+  const [showDuplicateModal, setShowDuplicateModal] = useState(false)
+  const [duplicateInfo, setDuplicateInfo] = useState<{ title: string; videoId: string } | null>(null)
+  const [pendingDownload, setPendingDownload] = useState<(() => Promise<void>) | null>(null)
+
   // Drag & drop state
   const [isDragOver, setIsDragOver] = useState(false)
 
@@ -754,8 +759,42 @@ export const AnalyzeTab = forwardRef<AnalyzeTabRef, AnalyzeTabProps>(function An
     }
 
     if (contentInfo.type === 'video') {
+      // Check for duplicate before adding
+      const videoUrl = `https://www.youtube.com/watch?v=${contentInfo.id}`
+      try {
+        const duplicateCheck = await window.electronAPI.checkDuplicate(videoUrl)
+        if (duplicateCheck.isDuplicate) {
+          setDuplicateInfo({
+            title: duplicateCheck.title || contentInfo.title,
+            videoId: duplicateCheck.videoId || contentInfo.id,
+          })
+          setShowDuplicateModal(true)
+          setPendingDownload(() => async () => {
+            await window.electronAPI.addToQueue({
+              url: videoUrl,
+              title: contentInfo.title,
+              thumbnail: contentInfo.thumbnail,
+              channel: contentInfo.uploaderName,
+              format: formatToUse,
+              qualityLabel,
+              audioOnly: isAudio,
+              source: 'app',
+              sourceType: 'single',
+              contentType: getContentType(),
+              subtitleOptions: subOpts,
+              subtitleDisplayNames,
+            })
+            onAddToQueue()
+          })
+          return
+        }
+      } catch (error) {
+        console.error('Failed to check for duplicate:', error)
+        // Continue with download if check fails
+      }
+
       await window.electronAPI.addToQueue({
-        url: `https://www.youtube.com/watch?v=${contentInfo.id}`,
+        url: videoUrl,
         title: contentInfo.title,
         thumbnail: contentInfo.thumbnail,
         channel: contentInfo.uploaderName,
@@ -772,13 +811,31 @@ export const AnalyzeTab = forwardRef<AnalyzeTabRef, AnalyzeTabProps>(function An
       const videosToDownload = getVideosToDownload()
       const srcType = contentInfo.type === 'playlist' ? 'playlist' : 'channel'
       const batchGroupId = `batch-${Date.now()}-${Math.random().toString(36).substr(2, 6)}`
+
+      // Check for duplicates in playlist/channel
+      let skippedCount = 0
+      const duplicates: string[] = []
+
       for (const entry of videosToDownload) {
+        const entryUrl = `https://www.youtube.com/watch?v=${entry.id}`
+        try {
+          const duplicateCheck = await window.electronAPI.checkDuplicate(entryUrl)
+          if (duplicateCheck.isDuplicate) {
+            skippedCount++
+            duplicates.push(entry.title)
+            continue // Skip this video
+          }
+        } catch (error) {
+          console.error('Failed to check duplicate for:', entry.id, error)
+          // Continue with download if check fails
+        }
+
         const override = qualityOverrides.get(entry.id)
         const entryFormat = override?.formatId || formatToUse
         const entryIsAudio = override?.isAudioOnly ?? isAudio
         const entryQualityLabel = override?.quality || qualityLabel
         await window.electronAPI.addToQueue({
-          url: `https://www.youtube.com/watch?v=${entry.id}`,
+          url: entryUrl,
           title: entry.title,
           thumbnail: entry.thumbnail,
           channel: contentInfo.uploaderName,
@@ -792,6 +849,12 @@ export const AnalyzeTab = forwardRef<AnalyzeTabRef, AnalyzeTabProps>(function An
           subtitleDisplayNames,
           batchGroupId,
         })
+      }
+
+      // Show summary if duplicates were skipped
+      if (skippedCount > 0) {
+        console.log(`Skipped ${skippedCount} duplicate(s) from ${srcType}`)
+        // Could show a toast notification here
       }
     }
 
@@ -1193,6 +1256,65 @@ export const AnalyzeTab = forwardRef<AnalyzeTabRef, AnalyzeTabProps>(function An
                         <span>ADD {detectedUrls.filter(u => u.selected && u.isValid).length} TO QUEUE</span>
                       </>
                     )}
+                  </button>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* Duplicate Detection Modal */}
+          {showDuplicateModal && duplicateInfo && (
+            <div className="multi-url-overlay">
+              <div className="multi-url-modal duplicate-modal">
+                <div className="multi-url-header">
+                  <span className="multi-url-title">DUPLICATE DETECTED</span>
+                  <button
+                    type="button"
+                    className="multi-url-close"
+                    onClick={() => {
+                      setShowDuplicateModal(false)
+                      setDuplicateInfo(null)
+                      setPendingDownload(null)
+                    }}
+                  >
+                    ×
+                  </button>
+                </div>
+                <div className="duplicate-content">
+                  <div className="duplicate-icon">⚠</div>
+                  <p className="duplicate-message">
+                    This video has already been downloaded:
+                  </p>
+                  <p className="duplicate-title">{duplicateInfo.title}</p>
+                  <p className="duplicate-hint">
+                    Do you want to download it again?
+                  </p>
+                </div>
+                <div className="multi-url-actions">
+                  <button
+                    type="button"
+                    className="multi-url-btn cancel"
+                    onClick={() => {
+                      setShowDuplicateModal(false)
+                      setDuplicateInfo(null)
+                      setPendingDownload(null)
+                    }}
+                  >
+                    CANCEL
+                  </button>
+                  <button
+                    type="button"
+                    className="multi-url-btn confirm"
+                    onClick={async () => {
+                      setShowDuplicateModal(false)
+                      setDuplicateInfo(null)
+                      if (pendingDownload) {
+                        await pendingDownload()
+                        setPendingDownload(null)
+                      }
+                    }}
+                  >
+                    DOWNLOAD ANYWAY
                   </button>
                 </div>
               </div>

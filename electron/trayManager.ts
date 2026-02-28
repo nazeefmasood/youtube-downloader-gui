@@ -1,10 +1,20 @@
-import { Tray, Menu, nativeImage, BrowserWindow, app, Notification } from 'electron'
+import { Tray, Menu, nativeImage, BrowserWindow, app, Notification, shell } from 'electron'
 import * as path from 'path'
 import { QueueManager, QueueStatus } from './queueManager'
 import { logger } from './logger'
 
 // Notification auto-dismiss timeout in milliseconds
 const NOTIFICATION_AUTO_DISMISS_MS = 5000
+
+// Number of recent downloads to show in tray menu
+const MAX_RECENT_DOWNLOADS = 5
+
+interface CompletedDownload {
+  id: string
+  title: string
+  filePath?: string
+  completedAt: number
+}
 
 export class TrayManager {
   private tray: Tray | null = null
@@ -14,11 +24,8 @@ export class TrayManager {
   private readonly TRAY_UPDATE_THROTTLE = 1000
   private unreadCompletedCount = 0
   private activeNotifications: Notification[] = []
-
-  // Emojis for different states (works cross-platform)
-  private readonly ICON_IDLE = '' // Use app icon
-  private readonly ICON_DOWNLOADING = '' // Use app icon
-  private readonly ICON_PAUSED = ''
+  private recentDownloads: CompletedDownload[] = []
+  private downloadPath: string = ''
 
   constructor(queueManager: QueueManager) {
     this.queueManager = queueManager
@@ -26,6 +33,10 @@ export class TrayManager {
 
   setMainWindow(window: BrowserWindow): void {
     this.mainWindow = window
+  }
+
+  setDownloadPath(path: string): void {
+    this.downloadPath = path
   }
 
   /**
@@ -90,6 +101,11 @@ export class TrayManager {
       this.showWindow()
     })
 
+    // Double click to open window
+    this.tray.on('double-click', () => {
+      this.showWindow()
+    })
+
     // Set up queue update listener
     this.queueManager.on('update', (status: QueueStatus) => {
       this.throttledUpdate(status)
@@ -108,7 +124,24 @@ export class TrayManager {
       // Increment unread count and update taskbar overlay
       this.unreadCompletedCount++
       this.updateTaskbarOverlay()
+
+      // Add to recent downloads
+      this.addToRecentDownloads({
+        id: item.id,
+        title: item.title,
+        filePath: item.filePath,
+        completedAt: Date.now(),
+      })
     })
+  }
+
+  private addToRecentDownloads(download: CompletedDownload): void {
+    // Add to beginning of array
+    this.recentDownloads.unshift(download)
+    // Keep only the most recent
+    if (this.recentDownloads.length > MAX_RECENT_DOWNLOADS) {
+      this.recentDownloads = this.recentDownloads.slice(0, MAX_RECENT_DOWNLOADS)
+    }
   }
 
   private throttledUpdate(status: QueueStatus): void {
@@ -128,6 +161,7 @@ export class TrayManager {
     const isPaused = status.isPaused
     const pendingCount = status.items.filter(i => i.status === 'pending').length
     const completedCount = status.items.filter(i => i.status === 'completed').length
+    const failedCount = status.items.filter(i => i.status === 'failed').length
     const totalCount = status.items.length
 
     let tooltip = 'VidGrab'
@@ -137,7 +171,11 @@ export class TrayManager {
     } else if (isDownloading) {
       const currentItem = status.items.find(i => i.id === status.currentItemId)
       const progress = currentItem?.progress?.percent ?? 0
+      const speed = currentItem?.progress?.speed
       tooltip += ` - Downloading (${Math.round(progress)}%)`
+      if (speed) {
+        tooltip += ` ${this.formatSpeed(speed)}`
+      }
     }
 
     if (totalCount > 0) {
@@ -145,9 +183,26 @@ export class TrayManager {
       if (pendingCount > 0) {
         tooltip += ` (${pendingCount} pending)`
       }
+      if (failedCount > 0) {
+        tooltip += ` [${failedCount} failed]`
+      }
     }
 
     this.tray.setToolTip(tooltip)
+  }
+
+  private formatSpeed(bytesPerSecond: number | string): string {
+    // If already a string, return it
+    if (typeof bytesPerSecond === 'string') return bytesPerSecond
+
+    if (bytesPerSecond < 1024) return `${bytesPerSecond} B/s`
+    if (bytesPerSecond < 1024 * 1024) return `${(bytesPerSecond / 1024).toFixed(1)} KB/s`
+    return `${(bytesPerSecond / (1024 * 1024)).toFixed(1)} MB/s`
+  }
+
+  private truncateTitle(title: string, maxLength: number = 40): string {
+    if (title.length <= maxLength) return title
+    return title.substring(0, maxLength - 3) + '...'
   }
 
   private updateTrayMenu(): void {
@@ -155,38 +210,133 @@ export class TrayManager {
 
     const status = this.queueManager.getStatus()
     const isPaused = status.isPaused
+    const isDownloading = status.isProcessing
     const hasItems = status.items.length > 0
+    const pendingCount = status.items.filter(i => i.status === 'pending').length
+    const completedCount = status.items.filter(i => i.status === 'completed').length
+    const failedCount = status.items.filter(i => i.status === 'failed').length
 
-    const template: (Electron.MenuItemConstructorOptions | Electron.MenuItem)[] = [
-      {
-        label: 'Open VidGrab',
-        click: () => this.showWindow(),
+    const template: (Electron.MenuItemConstructorOptions | Electron.MenuItem)[] = []
+
+    // Current download section
+    if (isDownloading) {
+      const currentItem = status.items.find(i => i.id === status.currentItemId)
+      if (currentItem) {
+        const progress = Math.round(currentItem.progress?.percent ?? 0)
+        const speed = currentItem.progress?.speed ? this.formatSpeed(currentItem.progress.speed) : ''
+        template.push({
+          label: `Now: ${this.truncateTitle(currentItem.title, 30)}`,
+          enabled: false,
+        })
+        template.push({
+          label: `   ${this.createProgressBar(progress)} ${progress}% ${speed}`,
+          enabled: false,
+        })
+        template.push({ type: 'separator' })
+      }
+    }
+
+    // Queue stats
+    if (hasItems) {
+      template.push({
+        label: `Queue: ${completedCount}/${status.items.length} completed`,
+        enabled: false,
+      })
+      if (pendingCount > 0) {
+        template.push({
+          label: `   ${pendingCount} pending`,
+          enabled: false,
+        })
+      }
+      if (failedCount > 0) {
+        template.push({
+          label: `   ${failedCount} failed`,
+          enabled: false,
+        })
+      }
+      template.push({ type: 'separator' })
+    }
+
+    // Recent downloads
+    if (this.recentDownloads.length > 0) {
+      template.push({
+        label: 'Recent Downloads',
+        enabled: false,
+      })
+      for (const download of this.recentDownloads) {
+        const label = this.truncateTitle(download.title, 35)
+        template.push({
+          label: `   ${label}`,
+          click: () => {
+            if (download.filePath) {
+              shell.showItemInFolder(download.filePath)
+            } else {
+              this.showWindow()
+            }
+          },
+        })
+      }
+      template.push({ type: 'separator' })
+    }
+
+    // Main actions
+    template.push({
+      label: 'Open VidGrab',
+      click: () => this.showWindow(),
+    })
+
+    template.push({
+      label: 'Open Download Folder',
+      click: () => {
+        if (this.downloadPath) {
+          shell.openPath(this.downloadPath)
+        }
       },
-      { type: 'separator' },
-      {
-        label: isPaused ? 'Resume All' : 'Pause All',
-        enabled: hasItems,
+    })
+
+    template.push({ type: 'separator' })
+
+    // Queue controls
+    template.push({
+      label: isPaused ? '▶ Resume All' : '⏸ Pause All',
+      enabled: hasItems,
+      click: () => {
+        if (isPaused) {
+          this.queueManager.resume()
+        } else {
+          this.queueManager.pause()
+        }
+      },
+    })
+
+    if (failedCount > 0) {
+      template.push({
+        label: `↻ Retry ${failedCount} Failed`,
         click: () => {
-          if (isPaused) {
-            this.queueManager.resume()
-          } else {
-            this.queueManager.pause()
-          }
+          this.queueManager.retryAllFailed()
         },
+      })
+    }
+
+    template.push({ type: 'separator' })
+
+    // Quit
+    template.push({
+      label: 'Quit VidGrab',
+      click: () => {
+        // Destroy tray to prevent re-showing
+        this.destroy()
+        app.quit()
       },
-      {
-        label: 'Show Downloads',
-        enabled: hasItems,
-        click: () => this.showWindow(),
-      },
-      { type: 'separator' },
-      {
-        label: 'Quit',
-        click: () => app.quit(),
-      },
-    ]
+    })
 
     this.tray.setContextMenu(Menu.buildFromTemplate(template))
+  }
+
+  private createProgressBar(percent: number, width: number = 10): string {
+    const filled = Math.round((percent / 100) * width)
+    const empty = width - filled
+    return '█'.repeat(filled) + '░'.repeat(empty)
   }
 
   private updateTrayTooltip(text: string): void {

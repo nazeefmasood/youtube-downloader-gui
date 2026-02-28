@@ -7753,6 +7753,46 @@ html[data-font-size="x-large"] {
 }
 
 /* ============================================
+   DUPLICATE DETECTION MODAL
+   ============================================ */
+
+.duplicate-modal {
+  max-width: 450px;
+  text-align: center;
+}
+
+.duplicate-content {
+  padding: 24px 20px;
+}
+
+.duplicate-icon {
+  font-size: 3rem;
+  margin-bottom: 16px;
+  color: var(--warning, #ffaa00);
+}
+
+.duplicate-message {
+  font-size: 0.9rem;
+  color: var(--text-muted);
+  margin-bottom: 8px;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
+.duplicate-title {
+  font-size: 1.1rem;
+  font-weight: 600;
+  color: var(--text-primary);
+  margin-bottom: 16px;
+  word-break: break-word;
+}
+
+.duplicate-hint {
+  font-size: 0.85rem;
+  color: var(--text-muted);
+}
+
+/* ============================================
    NOTIFICATION SOUNDS SETTINGS
    ============================================ */
 

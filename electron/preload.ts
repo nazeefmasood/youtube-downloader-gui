@@ -108,6 +108,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
   }) => ipcRenderer.invoke('history:add', item),
   removeFromHistory: (id: string) => ipcRenderer.invoke('history:remove', id),
   clearHistory: () => ipcRenderer.invoke('history:clear'),
+  checkDuplicate: (url: string) => ipcRenderer.invoke('history:checkDuplicate', url),
   onHistoryAdded: (callback: (item: {
     id: string
     title: string

@@ -239,6 +239,9 @@ function createWindow() {
   // Initialize tray manager
   trayManager = new TrayManager(queueManager)
   trayManager.setMainWindow(mainWindow)
+  // Set initial download path
+  const initialSettings = store.get('settings')
+  trayManager.setDownloadPath(initialSettings.downloadPath as string || getDefaultDownloadPath())
   trayManager.initialize().catch((error) => {
     console.error('Failed to initialize tray:', error)
   })
@@ -651,6 +654,11 @@ ipcMain.handle('settings:save', (_event, settings: Record<string, unknown>) => {
   const current = store.get('settings')
   const newSettings = { ...current, ...settings }
   store.set('settings', newSettings)
+
+  // Update tray manager download path if changed
+  if (trayManager && newSettings.downloadPath) {
+    trayManager.setDownloadPath(newSettings.downloadPath as string)
+  }
 
   // Sync settings to queueManager immediately so changes take effect for new downloads
   if (queueManager) {
@@ -1317,4 +1325,61 @@ ipcMain.handle('tray:clearBadge', () => {
   if (trayManager) {
     trayManager.clearUnreadCount()
   }
+})
+
+// Extract YouTube video ID from URL
+function extractVideoId(url: string): string | null {
+  try {
+    const parsed = new URL(url)
+    let videoId: string | null = null
+
+    // Handle youtube.com/watch?v=VIDEO_ID
+    if (parsed.hostname.includes('youtube.com')) {
+      videoId = parsed.searchParams.get('v')
+    }
+    // Handle youtu.be/VIDEO_ID
+    else if (parsed.hostname === 'youtu.be') {
+      videoId = parsed.pathname.slice(1).split('/')[0].split('?')[0]
+    }
+    // Handle youtube.com/shorts/VIDEO_ID
+    else if (parsed.pathname.includes('/shorts/')) {
+      videoId = parsed.pathname.split('/shorts/')[1]?.split('/')[0].split('?')[0]
+    }
+    // Handle youtube.com/embed/VIDEO_ID
+    else if (parsed.pathname.includes('/embed/')) {
+      videoId = parsed.pathname.split('/embed/')[1]?.split('/')[0].split('?')[0]
+    }
+
+    return videoId && videoId.length === 11 ? videoId : null
+  } catch {
+    return null
+  }
+}
+
+// Check for duplicate download
+ipcMain.handle('history:checkDuplicate', (_event, url: string) => {
+  const videoId = extractVideoId(url)
+  if (!videoId) return { isDuplicate: false }
+
+  const history = store.get('history') as Array<{ url?: string; id?: string; title?: string }>
+  const existingItem = history.find(item => {
+    if (item.id?.startsWith('queue-')) {
+      // Extract video ID from queue item if stored
+      return false
+    }
+    if (item.url) {
+      return extractVideoId(item.url) === videoId
+    }
+    return false
+  })
+
+  if (existingItem) {
+    return {
+      isDuplicate: true,
+      title: existingItem.title || 'Unknown',
+      videoId,
+    }
+  }
+
+  return { isDuplicate: false, videoId }
 })

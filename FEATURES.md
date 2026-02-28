@@ -16,33 +16,33 @@
 
 - [x] **Keyboard Shortcuts** - Global hotkeys for common actions (add URL, pause all, settings)
 - [x] **Drag & Drop URLs** - Drop URLs directly onto app window to add to queue
-- [ ] **Search History** - Search through past downloads by title, channel, URL
-- [ ] **Export/Import Queue** - Save and restore download queues as JSON files
+- [x] **Search History** - Search through past downloads by title, channel, URL
+- [x] **Export/Import Queue** - Save and restore download queues as JSON files
 - [x] **Notification Sounds** - Audio feedback on download completion/failure
 
 ---
 
 ## Analytics & Monitoring
 
-- [ ] **Download Stats Dashboard** - Total downloaded (size/count), bandwidth used, time saved
-- [ ] **Bandwidth Graph** - Real-time network usage visualization (chart)
-- [ ] **Failed Download Retry** - Auto-retry with exponential backoff, max attempts config
+- [x] **Download Stats Dashboard** - Total downloaded (size/count), bandwidth used, time saved
+- [x] **Bandwidth Graph** - Real-time network usage visualization (chart)
+- [x] **Failed Download Retry** - Auto-retry with exponential backoff, max attempts config
 
 ---
 
 ## UI/UX Enhancements
 
-- [ ] **Mini Mode** - Compact always-on-top window for monitoring downloads
-- [ ] **System Tray** - Minimize to tray, continue downloads in background
+- [x] **System Tray** - Minimize to tray, continue downloads in background
+  - Current download with progress bar and speed
+  - Queue stats (pending, completed, failed)
+  - Recent downloads with click-to-open
+  - Open download folder shortcut
+  - Retry all failed option
 - [x] **Dark/Light Theme Toggle** - Theme switcher in settings (Ctrl+L)
-- [ ] **Custom Themes** - User-defined color schemes with preset options
+- [x] **Custom Themes** - User-defined color schemes with preset options
 - [x] **Cyber Brutalist Close Dialog** - Exit confirmation modal redesigned to match app theme
 
 ---
-
-## Integration
-
-- [ ] **Send to Phone** - Transfer downloads to mobile device via QR code / WiFi Direct
 
 ---
 
@@ -50,19 +50,13 @@
 
 ### 🤖 Smart Features
 
-- [ ] **Duplicate Detector** - Warn if video already downloaded (by title/ID)
+- [x] **Duplicate Detector** - Warn if video already downloaded (by title/ID)
+  - Single video: Shows confirmation modal
+  - Playlist/Channel: Auto-skips duplicates, shows summary
 - [ ] **Broken Link Checker** - Check if saved URLs are still valid
 - [ ] **Storage Predictor** - Estimate required space before downloading playlist
 - [ ] **Smart Filename** - Auto-rename based on rules (remove emojis, fix encoding)
-- [ ] **Dead Video Alert** - Notify if a saved video gets deleted from YouTube
-
-### 📁 Organization
-
-- [ ] **Auto Folder by Date** - Organize into Year/Month folders
-- [ ] **Auto Folder by Channel** - Create folder per channel name
-- [ ] **Auto Folder by Type** - Music vs Video vs Podcast folders
-- [ ] **Custom Naming Rules** - Pattern-based filenames with variables
-- [ ] **File Tags** - Add tags to downloads for filtering
+- [x] **Auto Folder by Channel or playlist** - Create folder per channel name
 
 ### 🔄 Sync & Backup
 
@@ -71,10 +65,8 @@
 ### ⏰ Scheduling
 
 - [ ] **Download at Specific Time** - Schedule single download
-- [ ] **Recurring Schedule** - Check channel every Monday at 9am
 - [ ] **Wake Computer** - Wake from sleep to download
 - [ ] **Shutdown After Complete** - Auto-shutdown when queue done
-- [ ] **Pause During Work Hours** - Auto-pause 9am-5pm
 
 ### 🌐 Multi-Platform
 
@@ -102,7 +94,7 @@
 
 ### 🔗 Integrations
 
-- [ ] **Telegram Bot** - Control via Telegram
+- [ ] **Discord Bot** - Control via Discord
 - [ ] **Email Reports** - Daily/weekly email summaries
 
 ### 🧪 Experimental
@@ -121,10 +113,12 @@
 ## Completed Features (v1.0 - v1.5)
 
 ### v1.5.3
+
 - [x] Extension Authentication — Secure token-based API authentication
 - [x] Tightened CORS Policy — Restricted to chrome-extension origins only
 
 ### v1.5.2
+
 - [x] Close Confirmation Dialog — Always prompts on close with minimize/quit options
 - [x] Drag & Drop URL Support — Drop YouTube URLs directly onto the app
 - [x] Search Results Persistence — Results stay when switching tabs
@@ -133,9 +127,11 @@
 - [x] Removed Mini Mode Toggle — Simplified title bar
 
 ### v1.5.1
+
 - [x] Cyber Brutalist Close Dialog — Exit confirmation modal redesigned to match app theme
 
 ### v1.5.0
+
 - [x] Batch Download System with configurable batch size
 - [x] Per-Video Quality Selection for playlists
 - [x] Playlist Visual Grouping in Downloads tab
@@ -143,6 +139,7 @@
 - [x] Changelog auto-display on updates
 
 ### v1.0 - v1.4
+
 - [x] Core video download with yt-dlp
 - [x] Playlist support
 - [x] Channel support
