@@ -85,6 +85,7 @@ export const AnalyzeTab = forwardRef<AnalyzeTabRef, AnalyzeTabProps>(function An
     downloadError,
     detectUrl,
     cancelDetection,
+    url: storeUrl,  // Get the original URL from store as fallback
   } = useDownloadStore()
 
   const formatDuration = (seconds?: number) => {
@@ -115,10 +116,15 @@ export const AnalyzeTab = forwardRef<AnalyzeTabRef, AnalyzeTabProps>(function An
     }
   }, [])
 
-  // Parse a single URL and detect its type (YouTube video/playlist/channel)
+  // Parse a single URL and detect its type (YouTube video/playlist/channel, or other platform)
   const parseYouTubeUrl = useCallback((url: string): DetectedUrl => {
     try {
       const parsed = new URL(url)
+
+      // Check if it's a valid HTTP/HTTPS URL
+      if (parsed.protocol !== 'http:' && parsed.protocol !== 'https:') {
+        return { url, type: 'unknown', id: null, isValid: false, selected: false }
+      }
 
       // Handle YouTube domains
       const isYouTube =
@@ -126,10 +132,65 @@ export const AnalyzeTab = forwardRef<AnalyzeTabRef, AnalyzeTabProps>(function An
         parsed.hostname === 'youtube.com' ||
         parsed.hostname === 'm.youtube.com' ||
         parsed.hostname === 'youtu.be' ||
-        parsed.hostname === 'www.youtu.be'
+        parsed.hostname === 'www.youtu.be' ||
+        parsed.hostname === 'music.youtube.com'
+
+      // Handle Twitch domains
+      const isTwitch =
+        parsed.hostname === 'www.twitch.tv' ||
+        parsed.hostname === 'twitch.tv' ||
+        parsed.hostname === 'clips.twitch.tv'
+
+      // Handle Twitter/X domains
+      const isTwitter =
+        parsed.hostname === 'twitter.com' ||
+        parsed.hostname === 'www.twitter.com' ||
+        parsed.hostname === 'x.com' ||
+        parsed.hostname === 'www.x.com'
+
+      // Handle TikTok domains
+      const isTikTok =
+        parsed.hostname === 'www.tiktok.com' ||
+        parsed.hostname === 'tiktok.com' ||
+        parsed.hostname === 'vm.tiktok.com'
+
+      // Handle Instagram domains
+      const isInstagram =
+        parsed.hostname === 'www.instagram.com' ||
+        parsed.hostname === 'instagram.com'
+
+      // Handle Reddit domains
+      const isReddit =
+        parsed.hostname === 'www.reddit.com' ||
+        parsed.hostname === 'reddit.com' ||
+        parsed.hostname.endsWith('.reddit.com')
+
+      // Handle Vimeo domains
+      const isVimeo =
+        parsed.hostname === 'vimeo.com' ||
+        parsed.hostname === 'www.vimeo.com' ||
+        parsed.hostname === 'player.vimeo.com'
+
+      // For non-YouTube platforms, mark as video and let yt-dlp handle it
+      if (isTwitch || isTwitter || isTikTok || isInstagram || isReddit || isVimeo) {
+        return {
+          url,
+          type: 'video',
+          id: parsed.pathname.split('/').filter(Boolean).pop() || null,
+          isValid: true,
+          selected: true,
+        }
+      }
 
       if (!isYouTube) {
-        return { url, type: 'unknown', id: null, isValid: false, selected: false }
+        // Unknown platform - still try it (yt-dlp supports 1000+ sites)
+        return {
+          url,
+          type: 'video',
+          id: null,
+          isValid: true,
+          selected: true,
+        }
       }
 
       // Handle youtu.be short links
@@ -569,7 +630,8 @@ export const AnalyzeTab = forwardRef<AnalyzeTabRef, AnalyzeTabProps>(function An
 
         setIsLoadingSubtitles(true)
         try {
-          const url = `https://www.youtube.com/watch?v=${contentInfo.id}`
+          // Use original URL for multi-platform support
+          const url = contentInfo.url
           const subs = await window.electronAPI.getSubtitles(url)
           subtitleCache.set(contentInfo.id, subs)  // Cache the results
           setAvailableSubtitles(subs)
@@ -647,7 +709,12 @@ export const AnalyzeTab = forwardRef<AnalyzeTabRef, AnalyzeTabProps>(function An
     setIsLoadingVideoFormats(true)
     setExpandedVideoFormats([])
     try {
-      const url = `https://www.youtube.com/watch?v=${videoId}`
+      // Find the video entry to get its URL for multi-platform support
+      const videoEntry = contentInfo?.entries?.find(e => e.id === videoId)
+      const url = videoEntry?.url || (contentInfo?.url ? `${contentInfo.url}` : null)
+      if (!url) {
+        throw new Error('Video URL not found')
+      }
       const fmts = await window.electronAPI.getFormats(url)
       videoFormatCache.current.set(videoId, fmts)
       setExpandedVideoFormats(fmts)
@@ -657,7 +724,7 @@ export const AnalyzeTab = forwardRef<AnalyzeTabRef, AnalyzeTabProps>(function An
     } finally {
       setIsLoadingVideoFormats(false)
     }
-  }, [expandedVideoId])
+  }, [expandedVideoId, contentInfo])
 
   const handleSetQualityOverride = useCallback((videoId: string, format: VideoFormat) => {
     setQualityOverrides(prev => {
@@ -760,7 +827,12 @@ export const AnalyzeTab = forwardRef<AnalyzeTabRef, AnalyzeTabProps>(function An
 
     if (contentInfo.type === 'video') {
       // Check for duplicate before adding
-      const videoUrl = `https://www.youtube.com/watch?v=${contentInfo.id}`
+      // Use original URL for multi-platform support, fallback to store URL
+      const videoUrl = contentInfo.url || storeUrl
+      if (!videoUrl) {
+        console.error('No URL available for download')
+        return
+      }
       try {
         const duplicateCheck = await window.electronAPI.checkDuplicate(videoUrl)
         if (duplicateCheck.isDuplicate) {
@@ -817,7 +889,12 @@ export const AnalyzeTab = forwardRef<AnalyzeTabRef, AnalyzeTabProps>(function An
       const duplicates: string[] = []
 
       for (const entry of videosToDownload) {
-        const entryUrl = `https://www.youtube.com/watch?v=${entry.id}`
+        // Use entry URL for multi-platform support, skip if no URL available
+        const entryUrl = entry.url
+        if (!entryUrl) {
+          console.warn('Skipping entry with no URL:', entry.id, entry.title)
+          continue
+        }
         try {
           const duplicateCheck = await window.electronAPI.checkDuplicate(entryUrl)
           if (duplicateCheck.isDuplicate) {
@@ -859,7 +936,7 @@ export const AnalyzeTab = forwardRef<AnalyzeTabRef, AnalyzeTabProps>(function An
     }
 
     onAddToQueue()
-  }, [contentInfo, selectedFormat, formats, getVideosToDownload, onAddToQueue, subtitlesEnabled, availableSubtitles, selectedSubtitleLangs, includeAutoSubs, subFormat, embedSubs, qualityOverrides])
+  }, [contentInfo, selectedFormat, formats, getVideosToDownload, onAddToQueue, subtitlesEnabled, availableSubtitles, selectedSubtitleLangs, includeAutoSubs, subFormat, embedSubs, qualityOverrides, storeUrl])
 
   // Handle subtitle-only download
   const handleSubtitleOnlyDownload = useCallback(async () => {
@@ -872,8 +949,15 @@ export const AnalyzeTab = forwardRef<AnalyzeTabRef, AnalyzeTabProps>(function An
       return sub?.langName || code.toUpperCase()
     }).join(', ')
 
+    // Use original URL for multi-platform support, fallback to store URL
+    const videoUrl = contentInfo.url || storeUrl
+    if (!videoUrl) {
+      console.error('No URL available for subtitle download')
+      return
+    }
+
     await window.electronAPI.addToQueue({
-      url: `https://www.youtube.com/watch?v=${contentInfo.id}`,
+      url: videoUrl,
       title: contentInfo.title,
       thumbnail: contentInfo.thumbnail,
       channel: contentInfo.uploaderName,
@@ -894,7 +978,7 @@ export const AnalyzeTab = forwardRef<AnalyzeTabRef, AnalyzeTabProps>(function An
     })
 
     onAddToQueue()
-  }, [contentInfo, availableSubtitles, selectedSubtitleLangs, includeAutoSubs, subFormat, onAddToQueue])
+  }, [contentInfo, availableSubtitles, selectedSubtitleLangs, includeAutoSubs, subFormat, onAddToQueue, storeUrl])
 
   // Get video formats and audio formats separately
   const videoFormats = formats.filter(f => !f.isAudioOnly)

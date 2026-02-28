@@ -24,6 +24,7 @@ export interface SearchResult {
 export interface ContentInfo {
   type: 'video' | 'playlist' | 'channel'
   id: string
+  url: string  // Original URL for multi-platform support
   title: string
   thumbnail?: string
   duration?: number
@@ -36,6 +37,7 @@ export interface ContentInfo {
 
 export interface PlaylistEntry {
   id: string
+  url: string  // Full URL for multi-platform support
   title: string
   duration?: number
   thumbnail?: string

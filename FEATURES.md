@@ -70,13 +70,13 @@
 
 ### 🌐 Multi-Platform
 
-- [ ] **Twitch Support** - Download Twitch VODs/clips
-- [ ] **Twitter/X Support** - Download videos from tweets
-- [ ] **TikTok Support** - Download TikTok videos
-- [ ] **Instagram Support** - Download Reels/Stories
-- [ ] **Reddit Support** - Download videos from Reddit
-- [ ] **Vimeo Support** - Download Vimeo videos
-- [ ] **Universal URL Detection** - Auto-detect any supported platform
+- [x] **Twitch Support** - Download Twitch VODs/clips
+- [x] **Twitter/X Support** - Download videos from tweets
+- [x] **TikTok Support** - Download TikTok videos
+- [x] **Instagram Support** - Download Reels/Stories
+- [x] **Reddit Support** - Download videos from Reddit
+- [x] **Vimeo Support** - Download Vimeo videos
+- [x] **Universal URL Detection** - Auto-detect any supported platform (200+ platforms)
 
 ### 👨‍💻 Creator Tools
 
@@ -214,5 +214,5 @@ Esc           - Close modal
 
 ---
 
-_Last updated: 2026-02-28_
-_Version: v1.5.3_
+_Last updated: 2026-03-01_
+_Version: v1.6.0_

@@ -1327,7 +1327,7 @@ ipcMain.handle('tray:clearBadge', () => {
   }
 })
 
-// Extract YouTube video ID from URL
+// Extract video ID from URL (multi-platform support)
 function extractVideoId(url: string): string | null {
   try {
     const parsed = new URL(url)
@@ -1336,21 +1336,91 @@ function extractVideoId(url: string): string | null {
     // Handle youtube.com/watch?v=VIDEO_ID
     if (parsed.hostname.includes('youtube.com')) {
       videoId = parsed.searchParams.get('v')
+      // Handle youtube.com/shorts/VIDEO_ID
+      if (!videoId && parsed.pathname.includes('/shorts/')) {
+        videoId = parsed.pathname.split('/shorts/')[1]?.split('/')[0].split('?')[0]
+      }
+      // Handle youtube.com/embed/VIDEO_ID
+      if (!videoId && parsed.pathname.includes('/embed/')) {
+        videoId = parsed.pathname.split('/embed/')[1]?.split('/')[0].split('?')[0]
+      }
     }
     // Handle youtu.be/VIDEO_ID
     else if (parsed.hostname === 'youtu.be') {
       videoId = parsed.pathname.slice(1).split('/')[0].split('?')[0]
     }
-    // Handle youtube.com/shorts/VIDEO_ID
-    else if (parsed.pathname.includes('/shorts/')) {
-      videoId = parsed.pathname.split('/shorts/')[1]?.split('/')[0].split('?')[0]
+    // Handle TikTok
+    else if (parsed.hostname.includes('tiktok.com')) {
+      // TikTok URL format: /@username/video/123456789
+      const match = parsed.pathname.match(/\/video\/(\d+)/)
+      videoId = match ? match[1] : null
     }
-    // Handle youtube.com/embed/VIDEO_ID
-    else if (parsed.pathname.includes('/embed/')) {
-      videoId = parsed.pathname.split('/embed/')[1]?.split('/')[0].split('?')[0]
+    // Handle Twitch
+    else if (parsed.hostname.includes('twitch.tv')) {
+      // Twitch clips: clips.twitch.tv/CLIP_ID
+      // Twitch VODs: twitch.tv/username/v/123456 or twitch.tv/videos/123456
+      if (parsed.hostname === 'clips.twitch.tv') {
+        videoId = parsed.pathname.slice(1).split('/')[0]
+      } else {
+        const vodMatch = parsed.pathname.match(/\/(v|videos)\/(\d+)/)
+        videoId = vodMatch ? vodMatch[2] : parsed.pathname.split('/').filter(Boolean).pop() || null
+      }
+    }
+    // Handle Twitter/X
+    else if (parsed.hostname.includes('twitter.com') || parsed.hostname.includes('x.com')) {
+      // Twitter URL format: /username/status/123456789
+      const match = parsed.pathname.match(/\/status\/(\d+)/)
+      videoId = match ? match[1] : null
+    }
+    // Handle Instagram
+    else if (parsed.hostname.includes('instagram.com')) {
+      // Instagram reels: /reel/ABC123/
+      // Instagram posts: /p/ABC123/
+      const match = parsed.pathname.match(/\/(reel|p|tv)\/([^/]+)/)
+      videoId = match ? match[2] : null
+    }
+    // Handle Reddit
+    else if (parsed.hostname.includes('reddit.com') || parsed.hostname === 'v.redd.it') {
+      // Reddit video: v.redd.it/abc123
+      // Reddit post: reddit.com/r/sub/comments/abc123/
+      if (parsed.hostname === 'v.redd.it') {
+        videoId = parsed.pathname.slice(1).split('/')[0]
+      } else {
+        const match = parsed.pathname.match(/\/comments\/([a-zA-Z0-9]+)/)
+        videoId = match ? match[1] : null
+      }
+    }
+    // Handle Vimeo
+    else if (parsed.hostname.includes('vimeo.com')) {
+      // Vimeo URL format: /123456789 or player.vimeo.com/video/123456789
+      if (parsed.pathname.includes('/video/')) {
+        videoId = parsed.pathname.split('/video/')[1]?.split('/')[0]
+      } else {
+        videoId = parsed.pathname.slice(1).split('/')[0]
+      }
+    }
+    // Handle Facebook
+    else if (parsed.hostname.includes('facebook.com') || parsed.hostname === 'fb.watch') {
+      // Facebook watch URL: fb.watch/abc123
+      // Facebook video: facebook.com/watch?v=123456
+      if (parsed.hostname === 'fb.watch') {
+        videoId = parsed.pathname.slice(1).split('/')[0]
+      } else {
+        videoId = parsed.searchParams.get('v') || parsed.pathname.split('/').filter(Boolean).pop() || null
+      }
+    }
+    // For other platforms, use the full URL as the ID
+    else {
+      // Use a hash of the URL as the video ID for other platforms
+      videoId = `${parsed.hostname}:${parsed.pathname}`
     }
 
-    return videoId && videoId.length === 11 ? videoId : null
+    // For YouTube, validate the ID length
+    if (parsed.hostname.includes('youtube.com') || parsed.hostname === 'youtu.be') {
+      return videoId && videoId.length === 11 ? videoId : null
+    }
+
+    return videoId || null
   } catch {
     return null
   }

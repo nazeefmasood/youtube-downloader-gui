@@ -58,18 +58,12 @@ function isRateLimited(ip: string): boolean {
   return record.count > RATE_LIMIT_MAX_REQUESTS
 }
 
-function isValidYouTubeUrl(url: string): boolean {
+function isValidUrl(url: string): boolean {
   try {
     const parsed = new URL(url)
-    const validHosts = [
-      'youtube.com',
-      'www.youtube.com',
-      'm.youtube.com',
-      'youtu.be',
-      'www.youtu.be',
-      'music.youtube.com',
-    ]
-    return validHosts.some(host => parsed.hostname === host || parsed.hostname.endsWith('.' + host))
+    // yt-dlp supports many platforms - allow all valid HTTP/HTTPS URLs
+    // The downloader will validate if the platform is supported
+    return parsed.protocol === 'http:' || parsed.protocol === 'https:'
   } catch {
     return false
   }
@@ -189,8 +183,8 @@ export function createHttpServer(queueManager: QueueManager): http.Server {
           return
         }
 
-        if (!isValidYouTubeUrl(videoUrl)) {
-          sendError(res, 'Invalid YouTube URL')
+        if (!isValidUrl(videoUrl)) {
+          sendError(res, 'Invalid URL')
           return
         }
 
@@ -233,8 +227,8 @@ export function createHttpServer(queueManager: QueueManager): http.Server {
           return
         }
 
-        if (!isValidYouTubeUrl(videoUrl)) {
-          sendError(res, 'Invalid YouTube URL')
+        if (!isValidUrl(videoUrl)) {
+          sendError(res, 'Invalid URL')
           return
         }
 

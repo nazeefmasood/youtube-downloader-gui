@@ -2,6 +2,43 @@
 
 All notable changes to VidGrab will be documented in this file.
 
+## [1.6.0] - 2026-03-01
+
+### Added
+- **Enhanced System Tray** — Rich tray menu with download status
+  - Current download info with progress bar and speed
+  - Queue stats (pending, completed, failed counts)
+  - Recent downloads list (last 5) with click-to-open
+  - Open download folder shortcut
+  - Retry all failed option
+  - Visual progress indicator (███░░░░░░░)
+- **Duplicate Detection** — Warn when downloading already-downloaded videos
+  - Single video: Shows confirmation modal with option to proceed
+  - Playlist/Channel: Auto-skips duplicates, logs summary
+  - Checks video ID against download history
+- **Multi-Platform Support** — Download from 200+ platforms
+  - Twitch (VODs, clips, streams)
+  - Twitter/X (tweets with video)
+  - TikTok (videos)
+  - Instagram (Reels, videos)
+  - Reddit (video posts)
+  - Vimeo (videos)
+  - Facebook (videos)
+  - Dailymotion, Bilibili, SoundCloud, Spotify, and many more
+  - Universal URL detection - accepts any valid HTTP/HTTPS URL
+
+### Changed
+- **Extension Version Bump** — Updated to v1.6.0 to match app version
+- **URL Validation** — Now accepts all valid HTTP/HTTPS URLs, not just YouTube
+
+### Fixed
+- **Multi-Platform URL Handling** — Non-YouTube URLs now work correctly
+  - Fixed subtitle fetching using original URL instead of constructing YouTube URLs
+  - Fixed format fetching for playlist items using correct platform URLs
+  - Fixed duplicate detection for multi-platform URLs (TikTok, Twitch, Twitter, etc.)
+  - Added `url` field to ContentInfo and PlaylistEntry types for proper URL tracking
+  - Playlist entries now include full URLs for multi-platform support
+
 ## [1.5.3] - 2026-02-28
 
 ### Security

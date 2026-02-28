@@ -10,6 +10,7 @@ import { fetchPotToken } from './potTokenServer'
 interface ContentInfo {
   type: 'video' | 'playlist' | 'channel'
   id: string
+  url: string  // Original URL for multi-platform support
   title: string
   thumbnail?: string
   duration?: number
@@ -19,6 +20,7 @@ interface ContentInfo {
   videoCount?: number
   entries?: Array<{
     id: string
+    url: string  // Full URL for multi-platform support
     title: string
     duration?: number
     thumbnail?: string
@@ -319,7 +321,41 @@ export class Downloader extends EventEmitter {
     return binaryManager.getBinaryStatus()
   }
 
-  private async getExtractorArgs(): Promise<string[]> {
+  /**
+   * Check if URL is a YouTube URL
+   */
+  private isYouTubeUrl(url: string): boolean {
+    try {
+      const parsed = new URL(url)
+      const youtubeHosts = [
+        'youtube.com',
+        'www.youtube.com',
+        'm.youtube.com',
+        'music.youtube.com',
+        'youtu.be',
+        'www.youtu.be',
+      ]
+      return youtubeHosts.some(host =>
+        parsed.hostname === host ||
+        parsed.hostname.endsWith('.' + host)
+      )
+    } catch {
+      return false
+    }
+  }
+
+  private async getExtractorArgs(url?: string): Promise<string[]> {
+    // Log the URL being checked
+    if (url) {
+      logger.info('Checking URL platform', url.substring(0, 50))
+    }
+
+    // Only apply YouTube-specific extractor args for YouTube URLs
+    if (url && !this.isYouTubeUrl(url)) {
+      logger.info('Non-YouTube URL detected', `Using generic settings for: ${url.substring(0, 100)}`)
+      return []
+    }
+
     try {
       const result = await fetchPotToken()
       if (result) {
@@ -401,7 +437,7 @@ export class Downloader extends EventEmitter {
   }
 
   async detectUrl(url: string): Promise<ContentInfo> {
-    const extractorArgs = await this.getExtractorArgs()
+    const extractorArgs = await this.getExtractorArgs(url)
     const args = [
       '--dump-json',
       '--flat-playlist',
@@ -430,8 +466,11 @@ export class Downloader extends EventEmitter {
       const entries = lines.map((line, index) => {
         try {
           const entry = JSON.parse(line)
+          // Construct full URL for each entry - yt-dlp returns 'url' field for playlist items
+          const entryUrl = entry.url || (entry.id ? this.buildVideoUrl(url, entry.id) : null)
           return {
             id: entry.id || entry.url,
+            url: entryUrl || url,  // Fallback to parent URL if no entry URL
             title: entry.title || `Video ${index + 1}`,
             duration: entry.duration,
             thumbnail: entry.thumbnail || entry.thumbnails?.[0]?.url,
@@ -445,6 +484,7 @@ export class Downloader extends EventEmitter {
       return {
         type: isChannel ? 'channel' : 'playlist',
         id: firstEntry.playlist_id || firstEntry.id || url,
+        url: url,  // Original URL for multi-platform support
         title: firstEntry.playlist_title || firstEntry.title || 'Unknown',
         thumbnail: firstEntry.playlist_thumbnail || firstEntry.thumbnail || firstEntry.thumbnails?.[0]?.url,
         uploaderName: firstEntry.uploader || firstEntry.channel,
@@ -458,12 +498,33 @@ export class Downloader extends EventEmitter {
     return {
       type: 'video',
       id: firstEntry.id,
+      url: url,  // Original URL for multi-platform support
       title: firstEntry.title,
       thumbnail: firstEntry.thumbnail || firstEntry.thumbnails?.[0]?.url,
       duration: firstEntry.duration,
       uploaderName: firstEntry.uploader || firstEntry.channel,
       uploaderUrl: firstEntry.uploader_url || firstEntry.channel_url,
       description: firstEntry.description,
+    }
+  }
+
+  /**
+   * Build a video URL based on the platform
+   * For YouTube, construct watch URL; for others, try to preserve the platform's URL structure
+   */
+  private buildVideoUrl(sourceUrl: string, videoId: string): string | null {
+    try {
+      const parsed = new URL(sourceUrl)
+
+      // YouTube - construct watch URL
+      if (this.isYouTubeUrl(sourceUrl)) {
+        return `https://www.youtube.com/watch?v=${videoId}`
+      }
+
+      // For other platforms, return null - yt-dlp's entry.url should be used instead
+      return null
+    } catch {
+      return null
     }
   }
 
@@ -485,7 +546,7 @@ export class Downloader extends EventEmitter {
   }
 
   async getFormats(url: string): Promise<VideoFormat[]> {
-    const extractorArgs = await this.getExtractorArgs()
+    const extractorArgs = await this.getExtractorArgs(url)
     const args = [
       '--dump-json',
       '--no-playlist',
@@ -628,7 +689,7 @@ export class Downloader extends EventEmitter {
   }
 
   async getSubtitles(url: string): Promise<SubtitleInfo[]> {
-    const extractorArgs = await this.getExtractorArgs()
+    const extractorArgs = await this.getExtractorArgs(url)
     const args = [
       '--list-subs',
       '--skip-download',
@@ -722,7 +783,8 @@ export class Downloader extends EventEmitter {
     url: string
     type: 'video' | 'playlist' | 'channel'
   }>> {
-    const extractorArgs = await this.getExtractorArgs()
+    // For YouTube search, use YouTube extractor args
+    const extractorArgs = await this.getExtractorArgs('https://www.youtube.com')
     const args = [
       '--dump-json',
       '--flat-playlist',
@@ -896,7 +958,7 @@ export class Downloader extends EventEmitter {
 
     fs.mkdirSync(outputDir, { recursive: true })
 
-    const extractorArgs = await this.getExtractorArgs()
+    const extractorArgs = await this.getExtractorArgs(url)
 
     const args: string[] = [
       '--no-warnings',
