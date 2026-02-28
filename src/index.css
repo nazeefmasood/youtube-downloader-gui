@@ -5833,3 +5833,324 @@ body,
   color: #ef4444;
   font-size: 0.85em;
 }
+
+/* ============================================
+   QUEUE GROUP HEADERS - Cyber Brutalist
+   ============================================ */
+.queue-group-header {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 0 16px;
+  background: var(--bg-secondary);
+  border-bottom: 1px solid var(--border);
+  border-left: 3px solid var(--accent);
+  cursor: pointer;
+  user-select: none;
+  transition: all 0.15s ease;
+}
+
+.queue-group-header.collapsed {
+  border-left-color: var(--text-muted);
+}
+
+.queue-group-header:hover {
+  background: var(--bg-tertiary);
+}
+
+.group-expand-indicator {
+  font-size: 11px;
+  color: var(--text-muted);
+  width: 14px;
+  flex-shrink: 0;
+  font-family: monospace;
+}
+
+.group-info {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.group-title {
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--text-primary);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.group-stats {
+  display: flex;
+  gap: 8px;
+}
+
+.group-stat {
+  font-size: 9px;
+  font-weight: 600;
+  color: var(--text-muted);
+  letter-spacing: 0.05em;
+}
+
+.group-stat--error {
+  color: var(--error);
+}
+
+.group-stat--pending {
+  color: var(--warning);
+}
+
+.group-progress-wrap {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-shrink: 0;
+}
+
+.group-pct {
+  font-size: 10px;
+  font-weight: 700;
+  color: var(--accent);
+  min-width: 32px;
+  text-align: right;
+  font-family: monospace;
+}
+
+.group-bar {
+  width: 60px;
+  height: 3px;
+  background: var(--bg-primary);
+  overflow: hidden;
+}
+
+.group-bar-fill {
+  height: 100%;
+  background: var(--accent);
+  transition: width 0.3s ease;
+}
+
+.queue-item--grouped {
+  padding-left: 36px !important;
+  border-left: 1px solid var(--border);
+  margin-left: 2px;
+}
+
+/* ============================================
+   BATCH STATUS BAR
+   ============================================ */
+.batch-info-bar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 16px;
+  background: var(--bg-secondary);
+  border-top: 1px solid var(--border);
+  font-size: 9px;
+  font-weight: 600;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+}
+
+.batch-info-label {
+  color: var(--accent);
+}
+
+.batch-info-num {
+  color: var(--text-primary);
+  font-family: monospace;
+}
+
+.batch-info-sep {
+  color: var(--text-muted);
+}
+
+.batch-info-detail {
+  color: var(--text-secondary);
+}
+
+.batch-countdown-bar {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 8px 16px;
+  background: var(--bg-secondary);
+  border-top: 1px solid var(--border);
+}
+
+.countdown-label {
+  font-size: 10px;
+  font-weight: 600;
+  color: var(--warning);
+  letter-spacing: 0.05em;
+  white-space: nowrap;
+  font-family: monospace;
+}
+
+.countdown-bar-track {
+  flex: 1;
+  height: 3px;
+  background: var(--bg-primary);
+  overflow: hidden;
+}
+
+.countdown-bar-fill {
+  height: 100%;
+  background: var(--warning);
+  transition: width 1s linear;
+}
+
+/* ============================================
+   PER-VIDEO QUALITY SELECTION - Cyber Brutalist
+   ============================================ */
+.per-video-header .section-header {
+  background: var(--accent-glow);
+  border-bottom: 1px solid var(--accent);
+}
+
+.per-video-close {
+  background: transparent;
+  border: 1px solid var(--border);
+  color: var(--text-muted);
+  width: 22px;
+  height: 22px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  font-size: 11px;
+  transition: all 0.15s ease;
+  font-family: inherit;
+}
+
+.per-video-close:hover {
+  border-color: var(--error);
+  color: var(--error);
+}
+
+.per-video-info {
+  padding: 8px 16px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  background: var(--bg-tertiary);
+  border-bottom: 1px solid var(--border);
+}
+
+.per-video-name {
+  font-size: 11px;
+  font-weight: 500;
+  color: var(--text-primary);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  flex: 1;
+}
+
+.per-video-reset {
+  background: transparent;
+  border: 1px solid var(--border);
+  color: var(--text-muted);
+  font-size: 8px;
+  font-weight: 700;
+  letter-spacing: 0.1em;
+  padding: 3px 8px;
+  cursor: pointer;
+  font-family: inherit;
+  transition: all 0.15s ease;
+  flex-shrink: 0;
+}
+
+.per-video-reset:hover {
+  border-color: var(--accent);
+  color: var(--accent);
+}
+
+.list-item.has-override {
+  border-left: 2px solid var(--accent);
+}
+
+.quality-override-badge {
+  display: inline-block;
+  margin-left: 6px;
+  padding: 1px 5px;
+  font-size: 8px;
+  font-weight: 700;
+  letter-spacing: 0.05em;
+  background: var(--accent-glow);
+  color: var(--accent);
+  border: 1px solid var(--accent);
+  vertical-align: middle;
+}
+
+.item-quality-actions {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  margin-left: auto;
+  flex-shrink: 0;
+}
+
+.item-quality-clear {
+  width: 24px;
+  height: 24px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid var(--border);
+  background: transparent;
+  color: var(--text-muted);
+  cursor: pointer;
+  font-size: 12px;
+  transition: all 0.15s ease;
+  font-family: inherit;
+}
+
+.item-quality-btn {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  padding: 4px 10px;
+  height: 28px;
+  border: 1px solid var(--border);
+  background: transparent;
+  color: var(--text-muted);
+  cursor: pointer;
+  font-size: 11px;
+  font-family: 'Space Grotesk', monospace;
+  font-weight: 500;
+  letter-spacing: 0.5px;
+  text-transform: uppercase;
+  transition: all 0.15s ease;
+}
+
+.item-quality-btn .quality-btn-icon {
+  font-size: 14px;
+  line-height: 1;
+}
+
+.item-quality-btn .quality-btn-text {
+  font-size: 10px;
+  letter-spacing: 0.8px;
+}
+
+.item-quality-btn:hover,
+.item-quality-clear:hover {
+  border-color: var(--accent);
+  color: var(--accent);
+  background: var(--bg-tertiary);
+}
+
+.item-quality-btn.active {
+  background: var(--accent-glow);
+  color: var(--accent);
+  border-color: var(--accent);
+}
+
+.item-quality-clear:hover {
+  border-color: var(--error);
+  color: var(--error);
+}

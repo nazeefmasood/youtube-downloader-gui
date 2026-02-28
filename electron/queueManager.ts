@@ -169,10 +169,20 @@ export class QueueManager extends EventEmitter {
     batchDownloadEnabled?: boolean
   }): void {
     this.settings = settings
+    const changed = (
+      (settings.batchSize !== undefined && settings.batchSize !== this.batchSettings.batchSize) ||
+      (settings.batchPauseShort !== undefined && settings.batchPauseShort !== this.batchSettings.batchPauseShort) ||
+      (settings.batchPauseLong !== undefined && settings.batchPauseLong !== this.batchSettings.batchPauseLong) ||
+      (settings.batchDownloadEnabled !== undefined && settings.batchDownloadEnabled !== this.batchSettings.batchDownloadEnabled)
+    )
     if (settings.batchSize !== undefined) this.batchSettings.batchSize = settings.batchSize
     if (settings.batchPauseShort !== undefined) this.batchSettings.batchPauseShort = settings.batchPauseShort
     if (settings.batchPauseLong !== undefined) this.batchSettings.batchPauseLong = settings.batchPauseLong
     if (settings.batchDownloadEnabled !== undefined) this.batchSettings.batchDownloadEnabled = settings.batchDownloadEnabled
+    // Emit update so UI reflects the new batch calculations immediately
+    if (changed) {
+      this.emitUpdate()
+    }
   }
 
   private setupDownloaderListeners(): void {
@@ -241,7 +251,7 @@ export class QueueManager extends EventEmitter {
         }
 
         // Normal delay between downloads
-        const delay = this.settings.delayBetweenDownloads ?? 3000
+        const delay = this.settings.delayBetweenDownloads ?? 5000
         this.clearDelayTimer()
         this.startDownloadDelay(delay)
         this.delayTimer = setTimeout(() => {
@@ -553,7 +563,7 @@ export class QueueManager extends EventEmitter {
         audioOnly: nextItem.audioOnly,
         outputPath: this.downloadPath,
         organizeByType: this.settings.organizeByType ?? true,
-        delayBetweenDownloads: this.settings.delayBetweenDownloads ?? 3000,  // Default 3s to avoid 429
+        delayBetweenDownloads: this.settings.delayBetweenDownloads ?? 5000,  // Default 5s to avoid 429
         subtitleOptions: nextItem.subtitleOptions,
       })
     } catch (error) {

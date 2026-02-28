@@ -241,7 +241,7 @@ export class Downloader extends EventEmitter {
       // Check ffmpeg using binaryManager
       const ffmpegStatus = binaryManager.checkFfmpeg()
       if (ffmpegStatus.available) {
-        this.ffmpegPath = ffmpegStatus.path || 'ffmpeg'
+        this.ffmpegPath = this.resolveFfmpegAbsolute(ffmpegStatus.path || 'ffmpeg')
         logger.info('ffmpeg verified', `Path: ${this.ffmpegPath}, Version: ${ffmpegStatus.version}`)
       } else {
         logger.error('ffmpeg not available', 'Video downloads may fail without ffmpeg')
@@ -267,16 +267,33 @@ export class Downloader extends EventEmitter {
     return binaryManager.getBinaryPath()
   }
 
+  private resolveFfmpegAbsolute(ffmpegPath: string): string {
+    if (path.isAbsolute(ffmpegPath)) return ffmpegPath
+    // Non-absolute path (e.g. 'ffmpeg') - resolve to absolute so packaged apps can find it
+    try {
+      const cmd = process.platform === 'win32' ? 'where' : 'which'
+      const resolved = execSync(`${cmd} ${ffmpegPath}`, { timeout: 5000 }).toString().trim().split('\n')[0]
+      if (resolved && path.isAbsolute(resolved)) {
+        logger.info('Resolved system ffmpeg to absolute path', resolved)
+        return resolved
+      }
+    } catch {
+      // which/where failed
+    }
+    return ffmpegPath
+  }
+
   private getFfmpegPath(): string {
     // Use binaryManager to get ffmpeg path
     const ffmpegStatus = binaryManager.checkFfmpeg()
     if (ffmpegStatus.available && ffmpegStatus.path) {
-      logger.info('Using ffmpeg from binaryManager', `Path: ${ffmpegStatus.path}`)
-      return ffmpegStatus.path
+      const resolved = this.resolveFfmpegAbsolute(ffmpegStatus.path)
+      logger.info('Using ffmpeg from binaryManager', `Path: ${resolved}`)
+      return resolved
     }
-    // Fallback to system ffmpeg (will fail if not installed)
+    // Fallback to system ffmpeg - try to resolve to absolute
     logger.warn('ffmpeg not found in binaryManager, falling back to system ffmpeg')
-    return 'ffmpeg'
+    return this.resolveFfmpegAbsolute('ffmpeg')
   }
 
   // Check if ffmpeg is available for downloads
@@ -462,6 +479,10 @@ export class Downloader extends EventEmitter {
     ]
   }
 
+  private getFormatSize(format: Record<string, unknown>): number {
+    return (format.filesize as number) || (format.filesize_approx as number) || 0
+  }
+
   async getFormats(url: string): Promise<VideoFormat[]> {
     const extractorArgs = await this.getExtractorArgs()
     const args = [
@@ -515,11 +536,11 @@ export class Downloader extends EventEmitter {
 
     // Best audio format for size estimation (pick the last/best one)
     const bestAudioFormat = audioFormats.length > 0 ? audioFormats[audioFormats.length - 1] : null
-    const bestAudioSize = (bestAudioFormat?.filesize as number) || 0
+    const bestAudioSize = bestAudioFormat ? this.getFormatSize(bestAudioFormat) : 0
 
     // Best video format for "Best Quality" size estimation
     const bestVideoFormat = videoFormats.length > 0 ? videoFormats[videoFormats.length - 1] : null
-    const bestTotalSize = ((bestVideoFormat?.filesize as number) || 0) + bestAudioSize
+    const bestTotalSize = (bestVideoFormat ? this.getFormatSize(bestVideoFormat) : 0) + bestAudioSize
 
     logger.info('Format detection', `Max height: ${maxHeight}p, Video formats: ${videoFormats.length}, Audio formats: ${audioFormats.length}`)
 
@@ -565,7 +586,7 @@ export class Downloader extends EventEmitter {
         const closestMatch = exactMatch || videoFormats
           .filter((f: Record<string, unknown>) => (f.height as number) <= q.height)
           .pop()
-        const estimatedVideoSize = (closestMatch?.filesize as number) || 0
+        const estimatedVideoSize = closestMatch ? this.getFormatSize(closestMatch) : 0
         const estimatedSize = estimatedVideoSize + bestAudioSize
 
         formats.push({
@@ -580,7 +601,7 @@ export class Downloader extends EventEmitter {
     }
 
     // Add audio-only options
-    const audioSize = (bestAudioFormat?.filesize as number) || undefined
+    const audioSize = bestAudioFormat ? (this.getFormatSize(bestAudioFormat) || undefined) : undefined
     formats.push({
       formatId: 'bestaudio/best',
       ext: 'mp3',
@@ -598,7 +619,7 @@ export class Downloader extends EventEmitter {
       ext: 'm4a',
       resolution: 'audio',
       quality: 'M4A (Best)',
-      filesize: (m4aFormat?.filesize as number) || audioSize,
+      filesize: (m4aFormat ? this.getFormatSize(m4aFormat) : 0) || audioSize,
       isAudioOnly: true,
     })
 
@@ -795,7 +816,18 @@ export class Downloader extends EventEmitter {
 
 
     return new Promise((resolve, reject) => {
-      this.currentProcess = spawn(this.ytdlpPath, args)
+      // Augment PATH for yt-dlp subprocess to find ffmpeg in common locations
+      const augmentedEnv = {
+        ...process.env,
+        PATH: [
+          process.env.PATH,
+          '/usr/local/bin',
+          '/opt/homebrew/bin',
+          '/usr/bin',
+          '/bin',
+        ].filter(Boolean).join(path.delimiter),
+      }
+      this.currentProcess = spawn(this.ytdlpPath, args, { env: augmentedEnv })
 
       let currentFile = videoTitle
       const currentIndex = 1

@@ -2,6 +2,51 @@
 
 All notable changes to VidGrab will be documented in this file.
 
+## [1.5.0] - 2026-02-28
+
+### Added
+- **Batch Download System** — Organize playlist/channel downloads into configurable batches
+  - Set batch size in Settings (1-20 items per batch)
+  - Pause duration between batches (5-30 seconds)
+  - Visual batch indicators showing current batch and total
+  - Countdown timer during batch pauses
+- **Per-Video Quality Selection** — Set custom quality for individual playlist items
+  - Click "QUALITY" button on any playlist item to select its format
+  - Formats load in side panel with full quality options
+  - Override badge shows custom quality is set
+  - Reset individual overrides or all at once
+- **Playlist Visual Grouping** — Downloads tab now groups playlist/channel items
+  - Collapsible group headers with source info
+  - Progress bar showing group completion
+  - Stats for completed/failed/pending items
+  - Cyber brutalist design matching app theme
+- **Dynamic Batch Settings** — Changes to batch size reflect immediately on pending items
+  - Total batches recalculated in real-time
+  - No need to re-add items to queue
+
+### Fixed
+- **FFmpeg Path Resolution** — Video+audio merge now works correctly on all platforms
+  - Resolves system ffmpeg to absolute path using `which`/`where`
+  - Augments PATH with common binary locations
+  - Works in packaged Electron apps
+- **Changelog Not Showing on Update** — First-time users now see changelog correctly
+  - Fixed `lastVersionLaunched` default from current version to null
+  - Changelog modal triggers on version change detection
+- **File Size Estimates** — More accurate size display for video formats
+  - Uses `filesize_approx` when exact `filesize` unavailable
+  - Prevents "--" showing for formats with estimated sizes
+- **Misleading Quality Labels** — Playlist items no longer show wrong resolution
+  - "Best Quality" label used for playlists instead of first video's resolution
+  - yt-dlp picks actual best quality per-video at download time
+
+### Changed
+- **Quality Selection Button** — Improved visibility and usability
+  - Larger button with "QUALITY"/"CLOSE" text label
+  - Clearer visual affordance for custom quality feature
+- **Default Download Delay** — Increased from 3s to 5s between items
+  - Reduces YouTube rate limiting issues
+  - Configurable in Settings
+
 ## [1.4.5] - 2026-02-19
 
 ### Added

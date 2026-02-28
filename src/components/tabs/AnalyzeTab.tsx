@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState, useRef } from 'react'
 import { useDownloadStore } from '../../stores/downloadStore'
-import type { SubtitleInfo, PlaylistSelectionMode } from '../../types'
+import type { SubtitleInfo, PlaylistSelectionMode, VideoFormat } from '../../types'
 
 interface AnalyzeTabProps {
   onAddToQueue: () => void
@@ -15,6 +15,12 @@ export function AnalyzeTab({ onAddToQueue }: AnalyzeTabProps) {
   const [playlistSelectionMode, setPlaylistSelectionMode] = useState<PlaylistSelectionMode>('all')
   const [rangeStart, setRangeStart] = useState<number>(1)
   const [rangeEnd, setRangeEnd] = useState<number>(1)
+
+  // Per-video quality overrides for playlists
+  const [qualityOverrides, setQualityOverrides] = useState<Map<string, VideoFormat>>(new Map())
+  const [expandedVideoId, setExpandedVideoId] = useState<string | null>(null)
+  const [expandedVideoFormats, setExpandedVideoFormats] = useState<VideoFormat[]>([])
+  const [isLoadingVideoFormats, setIsLoadingVideoFormats] = useState(false)
 
   // Subtitle state - use ref to persist across tab switches
   const [subtitlesEnabled, setSubtitlesEnabled] = useState(false)
@@ -155,6 +161,63 @@ export function AnalyzeTab({ onAddToQueue }: AnalyzeTabProps) {
     })
   }, [])
 
+  // Cache per-video formats to avoid re-fetching
+  const videoFormatCache = useRef<Map<string, VideoFormat[]>>(new Map())
+
+  const handleVideoExpand = useCallback(async (videoId: string) => {
+    if (expandedVideoId === videoId) {
+      setExpandedVideoId(null)
+      return
+    }
+    setExpandedVideoId(videoId)
+
+    // Check cache first
+    const cached = videoFormatCache.current.get(videoId)
+    if (cached) {
+      setExpandedVideoFormats(cached)
+      return
+    }
+
+    setIsLoadingVideoFormats(true)
+    setExpandedVideoFormats([])
+    try {
+      const url = `https://www.youtube.com/watch?v=${videoId}`
+      const fmts = await window.electronAPI.getFormats(url)
+      videoFormatCache.current.set(videoId, fmts)
+      setExpandedVideoFormats(fmts)
+    } catch (err) {
+      console.error('Failed to fetch video formats:', err)
+      setExpandedVideoFormats([])
+    } finally {
+      setIsLoadingVideoFormats(false)
+    }
+  }, [expandedVideoId])
+
+  const handleSetQualityOverride = useCallback((videoId: string, format: VideoFormat) => {
+    setQualityOverrides(prev => {
+      const next = new Map(prev)
+      next.set(videoId, format)
+      return next
+    })
+  }, [])
+
+  const handleClearQualityOverride = useCallback((videoId: string) => {
+    setQualityOverrides(prev => {
+      const next = new Map(prev)
+      next.delete(videoId)
+      return next
+    })
+    if (expandedVideoId === videoId) {
+      setExpandedVideoId(null)
+    }
+  }, [expandedVideoId])
+
+  // Determine which formats to show in the side panel
+  // If a playlist video is expanded, show its formats; otherwise show global formats
+  const expandedVideoTitle = expandedVideoId
+    ? contentInfo?.entries?.find(e => e.id === expandedVideoId)?.title
+    : null
+
   const getVideosToDownload = useCallback(() => {
     if (!contentInfo?.entries) return []
 
@@ -180,7 +243,13 @@ export function AnalyzeTab({ onAddToQueue }: AnalyzeTabProps) {
     const isAudio = formatObj?.isAudioOnly || false
 
     // Get the quality label from the format (e.g. "4K", "1080p", "Best Quality (4K)")
-    const qualityLabel = formatObj?.quality || (isAudio ? 'Audio' : 'Video')
+    // For playlists: "Best Quality (720p)" is misleading since each video has its own max,
+    // so strip the resolution qualifier — yt-dlp's "bestvideo+bestaudio/best" picks each video's actual best
+    const isPlaylistOrChannel = contentInfo.type !== 'video'
+    let qualityLabel = formatObj?.quality || (isAudio ? 'Audio' : 'Video')
+    if (isPlaylistOrChannel && formatToUse === 'bestvideo+bestaudio/best') {
+      qualityLabel = 'Best Quality'
+    }
 
     // Build subtitle options if enabled
     // IMPORTANT: When embedding, only download selected languages (not all)
@@ -240,25 +309,31 @@ export function AnalyzeTab({ onAddToQueue }: AnalyzeTabProps) {
     } else {
       const videosToDownload = getVideosToDownload()
       const srcType = contentInfo.type === 'playlist' ? 'playlist' : 'channel'
+      const batchGroupId = `batch-${Date.now()}-${Math.random().toString(36).substr(2, 6)}`
       for (const entry of videosToDownload) {
+        const override = qualityOverrides.get(entry.id)
+        const entryFormat = override?.formatId || formatToUse
+        const entryIsAudio = override?.isAudioOnly ?? isAudio
+        const entryQualityLabel = override?.quality || qualityLabel
         await window.electronAPI.addToQueue({
           url: `https://www.youtube.com/watch?v=${entry.id}`,
           title: entry.title,
           thumbnail: entry.thumbnail,
-          format: formatToUse,
-          qualityLabel,
-          audioOnly: isAudio,
+          format: entryFormat,
+          qualityLabel: entryQualityLabel,
+          audioOnly: entryIsAudio,
           source: 'app',
           sourceType: srcType,
-          contentType: getContentType(),
+          contentType: entryIsAudio ? 'audio' : (subOpts ? 'video+sub' : 'video'),
           subtitleOptions: subOpts,
           subtitleDisplayNames,
+          batchGroupId,
         })
       }
     }
 
     onAddToQueue()
-  }, [contentInfo, selectedFormat, formats, getVideosToDownload, onAddToQueue, subtitlesEnabled, availableSubtitles, selectedSubtitleLangs, includeAutoSubs, subFormat, embedSubs])
+  }, [contentInfo, selectedFormat, formats, getVideosToDownload, onAddToQueue, subtitlesEnabled, availableSubtitles, selectedSubtitleLangs, includeAutoSubs, subFormat, embedSubs, qualityOverrides])
 
   // Handle subtitle-only download
   const handleSubtitleOnlyDownload = useCallback(async () => {
@@ -466,27 +541,55 @@ export function AnalyzeTab({ onAddToQueue }: AnalyzeTabProps) {
                   <div className="list-items">
                     {contentInfo.entries.map((video, idx) => {
                       const isSelected = selectedVideos.has(video.index)
+                      const hasOverride = qualityOverrides.has(video.id)
+                      const isExpanded = expandedVideoId === video.id
                       return (
-                        <div
-                          key={video.id}
-                          className={`list-item ${isSelected ? 'selected' : ''}`}
-                          onClick={() => handleVideoSelect(video.index)}
-                          style={{ animationDelay: `${idx * 0.03}s` }}
-                        >
-                          <div className={`item-check ${isSelected ? 'checked' : ''}`}>
-                            {isSelected && <span>✓</span>}
-                          </div>
-                          <span className="item-index">{String(video.index).padStart(2, '0')}</span>
-                          <div className="item-thumb">
-                            {video.thumbnail ? (
-                              <img src={video.thumbnail} alt="" />
-                            ) : (
-                              <div className="thumb-placeholder-small">▶</div>
-                            )}
-                          </div>
-                          <div className="item-info">
-                            <span className="item-title">{video.title}</span>
-                            <span className="item-duration">{formatDuration(video.duration)}</span>
+                        <div key={video.id} style={{ animationDelay: `${idx * 0.03}s` }}>
+                          <div
+                            className={`list-item ${isSelected ? 'selected' : ''} ${hasOverride ? 'has-override' : ''}`}
+                            onClick={() => handleVideoSelect(video.index)}
+                          >
+                            <div className={`item-check ${isSelected ? 'checked' : ''}`}>
+                              {isSelected && <span>✓</span>}
+                            </div>
+                            <span className="item-index">{String(video.index).padStart(2, '0')}</span>
+                            <div className="item-thumb">
+                              {video.thumbnail ? (
+                                <img src={video.thumbnail} alt="" />
+                              ) : (
+                                <div className="thumb-placeholder-small">▶</div>
+                              )}
+                            </div>
+                            <div className="item-info">
+                              <span className="item-title">{video.title}</span>
+                              <span className="item-duration">
+                                {formatDuration(video.duration)}
+                                {hasOverride && (
+                                  <span className="quality-override-badge" title="Custom quality set">
+                                    {qualityOverrides.get(video.id)!.quality}
+                                  </span>
+                                )}
+                              </span>
+                            </div>
+                            <div className="item-quality-actions" onClick={(e) => e.stopPropagation()}>
+                              {hasOverride && (
+                                <button
+                                  type="button"
+                                  className="item-quality-clear"
+                                  onClick={() => handleClearQualityOverride(video.id)}
+                                  title="Reset to global quality"
+                                >✕</button>
+                              )}
+                              <button
+                                type="button"
+                                className={`item-quality-btn ${isExpanded ? 'active' : ''}`}
+                                onClick={() => handleVideoExpand(video.id)}
+                                title="Set custom quality for this video"
+                              >
+                                <span className="quality-btn-icon">⚙</span>
+                                <span className="quality-btn-text">{isExpanded ? 'CLOSE' : 'QUALITY'}</span>
+                              </button>
+                            </div>
                           </div>
                         </div>
                       )
@@ -501,68 +604,128 @@ export function AnalyzeTab({ onAddToQueue }: AnalyzeTabProps) {
         {/* Right Panel - Options */}
         {contentInfo && (
           <aside className="analyze-options">
-            {/* Video Quality Section */}
+            {/* Per-video quality header when a playlist item is selected */}
+            {expandedVideoId && expandedVideoTitle && (
+              <div className="options-section per-video-header">
+                <div className="section-header">
+                  <span className="section-title">VIDEO QUALITY</span>
+                  <button
+                    type="button"
+                    className="per-video-close"
+                    onClick={() => setExpandedVideoId(null)}
+                  >✕</button>
+                </div>
+                <div className="per-video-info">
+                  <span className="per-video-name">{expandedVideoTitle}</span>
+                  {qualityOverrides.has(expandedVideoId) && (
+                    <button
+                      type="button"
+                      className="per-video-reset"
+                      onClick={() => handleClearQualityOverride(expandedVideoId)}
+                    >RESET TO GLOBAL</button>
+                  )}
+                </div>
+              </div>
+            )}
+
+            {/* Video Quality Section - shows per-video formats when expanded, global otherwise */}
             <div className="options-section">
               <div className="section-header">
-                <span className="section-title">QUALITY</span>
-                <span className="section-count">{videoFormats.length}</span>
+                <span className="section-title">
+                  {expandedVideoId ? 'SELECT QUALITY' : 'QUALITY'}
+                </span>
+                <span className="section-count">
+                  {expandedVideoId
+                    ? expandedVideoFormats.filter(f => !f.isAudioOnly).length
+                    : videoFormats.length}
+                </span>
               </div>
               <div className="section-content">
-                {isLoadingFormats ? (
+                {(expandedVideoId ? isLoadingVideoFormats : isLoadingFormats) ? (
                   <div className="options-loading">
                     <div className="mini-spinner" />
                     <span>Loading formats...</span>
                   </div>
                 ) : (
                   <div className="quality-grid">
-                    {videoFormats.map((format, idx) => (
-                      <button
-                        key={format.formatId}
-                        type="button"
-                        className={`quality-item ${selectedFormat === format.formatId ? 'selected' : ''}`}
-                        onClick={() => setSelectedFormat(format.formatId)}
-                        style={{ animationDelay: `${idx * 0.05}s` }}
-                      >
-                        <span className="quality-label">{format.quality}</span>
-                        <span className="quality-meta">
-                          <span className="quality-ext">{format.ext}</span>
-                          {formatFileSize(format.filesize) && (
-                            <span className="quality-size">{formatFileSize(format.filesize)}</span>
-                          )}
-                        </span>
-                      </button>
-                    ))}
+                    {(expandedVideoId
+                      ? expandedVideoFormats.filter(f => !f.isAudioOnly)
+                      : videoFormats
+                    ).map((format, idx) => {
+                      const isSelected = expandedVideoId
+                        ? qualityOverrides.get(expandedVideoId)?.formatId === format.formatId
+                        : selectedFormat === format.formatId
+                      return (
+                        <button
+                          key={format.formatId}
+                          type="button"
+                          className={`quality-item ${isSelected ? 'selected' : ''}`}
+                          onClick={() => {
+                            if (expandedVideoId) {
+                              handleSetQualityOverride(expandedVideoId, format)
+                            } else {
+                              setSelectedFormat(format.formatId)
+                            }
+                          }}
+                          style={{ animationDelay: `${idx * 0.05}s` }}
+                        >
+                          <span className="quality-label">{format.quality}</span>
+                          <span className="quality-meta">
+                            <span className="quality-ext">{format.ext}</span>
+                            {formatFileSize(format.filesize) && (
+                              <span className="quality-size">{formatFileSize(format.filesize)}</span>
+                            )}
+                          </span>
+                        </button>
+                      )
+                    })}
                   </div>
                 )}
               </div>
             </div>
 
             {/* Audio Only Section */}
-            {audioFormats.length > 0 && (
+            {((expandedVideoId ? expandedVideoFormats : formats).filter(f => f.isAudioOnly).length > 0) && (
               <div className="options-section">
                 <div className="section-header">
                   <span className="section-title">AUDIO ONLY</span>
-                  <span className="section-count">{audioFormats.length}</span>
+                  <span className="section-count">
+                    {(expandedVideoId ? expandedVideoFormats : formats).filter(f => f.isAudioOnly).length}
+                  </span>
                 </div>
                 <div className="section-content">
                   <div className="quality-grid">
-                    {audioFormats.map((format, idx) => (
-                      <button
-                        key={format.formatId}
-                        type="button"
-                        className={`quality-item audio ${selectedFormat === format.formatId ? 'selected' : ''}`}
-                        onClick={() => setSelectedFormat(format.formatId)}
-                        style={{ animationDelay: `${(videoFormats.length + idx) * 0.05}s` }}
-                      >
-                        <span className="quality-label">{format.quality}</span>
-                        <span className="quality-meta">
-                          <span className="quality-ext">{format.ext}</span>
-                          {formatFileSize(format.filesize) && (
-                            <span className="quality-size">{formatFileSize(format.filesize)}</span>
-                          )}
-                        </span>
-                      </button>
-                    ))}
+                    {(expandedVideoId
+                      ? expandedVideoFormats.filter(f => f.isAudioOnly)
+                      : audioFormats
+                    ).map((format, idx) => {
+                      const isSelected = expandedVideoId
+                        ? qualityOverrides.get(expandedVideoId)?.formatId === format.formatId
+                        : selectedFormat === format.formatId
+                      return (
+                        <button
+                          key={format.formatId}
+                          type="button"
+                          className={`quality-item audio ${isSelected ? 'selected' : ''}`}
+                          onClick={() => {
+                            if (expandedVideoId) {
+                              handleSetQualityOverride(expandedVideoId, format)
+                            } else {
+                              setSelectedFormat(format.formatId)
+                            }
+                          }}
+                          style={{ animationDelay: `${idx * 0.05}s` }}
+                        >
+                          <span className="quality-label">{format.quality}</span>
+                          <span className="quality-meta">
+                            <span className="quality-ext">{format.ext}</span>
+                            {formatFileSize(format.filesize) && (
+                              <span className="quality-size">{formatFileSize(format.filesize)}</span>
+                            )}
+                          </span>
+                        </button>
+                      )
+                    })}
                   </div>
                 </div>
               </div>

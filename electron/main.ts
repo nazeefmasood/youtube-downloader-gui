@@ -14,7 +14,7 @@ interface StoreData {
   settings: Record<string, unknown>
   history: Array<Record<string, unknown>>
   updateState: {
-    lastVersionLaunched: string
+    lastVersionLaunched: string | null
     lastUpdateCheck: string | null
     updateSkippedVersion: string | null
     changelogSeenForVersion: string
@@ -42,7 +42,7 @@ class SimpleStore {
           settings: {},
           history: [],
           updateState: {
-            lastVersionLaunched: app.getVersion(),
+            lastVersionLaunched: null,
             lastUpdateCheck: null,
             updateSkippedVersion: null,
             changelogSeenForVersion: app.getVersion(),
@@ -57,7 +57,7 @@ class SimpleStore {
       settings: {},
       history: [],
       updateState: {
-        lastVersionLaunched: app.getVersion(),
+        lastVersionLaunched: null,
         lastUpdateCheck: null,
         updateSkippedVersion: null,
         changelogSeenForVersion: app.getVersion(),
@@ -475,7 +475,7 @@ ipcMain.handle('settings:get', () => {
     autoStartDownload: false,
     autoBestQuality: true,
     maxConcurrentDownloads: 1,
-    delayBetweenDownloads: 3000,
+    delayBetweenDownloads: 5000,
     theme: 'dark',
     fontSize: 'medium',
     batchSize: 25,

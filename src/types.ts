@@ -197,7 +197,7 @@ export interface ChangelogData {
 }
 
 export interface UpdateState {
-  lastVersionLaunched: string
+  lastVersionLaunched: string | null
   lastUpdateCheck: string | null
   updateSkippedVersion: string | null
   changelogSeenForVersion: string
