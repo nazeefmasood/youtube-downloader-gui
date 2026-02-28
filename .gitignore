@@ -8,7 +8,7 @@ release/
 
 # Binaries (download separately)
 # binaries/yt-dlp*
-
+.claude
 # IDE
 .vscode/
 .idea/
@@ -27,3 +27,8 @@ npm-debug.log*
 
 # TypeScript
 *.tsbuildinfo
+
+# Claude Flow / MCP
+.mcp.json
+.swarm/
+.claude-flow/

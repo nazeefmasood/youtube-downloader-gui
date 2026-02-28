@@ -74,6 +74,8 @@ const defaultSettings: AppSettings = {
   maxConcurrentDownloads: 1,
   delayBetweenDownloads: 2000,
   theme: 'dark',
+  selectedTheme: 'purple',  // Default theme
+  customAccentColor: '#8b5cf6',  // Default purple accent
   fontSize: 'medium',
   batchSize: 25,
   batchPauseShort: 5,
@@ -82,6 +84,13 @@ const defaultSettings: AppSettings = {
   potTokenEnabled: true,
   potTokenPort: 4416,
   potTokenTTL: 360,
+  speedLimit: '',  // Empty = unlimited
+  soundEnabled: true,
+  soundVolume: 50,
+  soundNotificationMode: 'every',
+  autoRetryEnabled: true,
+  maxRetries: 3,
+  closeToTray: true,
 }
 
 export const useDownloadStore = create<DownloadState>((set, get) => ({
@@ -181,6 +190,7 @@ export const useDownloadStore = create<DownloadState>((set, get) => ({
         url,
         title: contentInfo?.title || 'Unknown',
         thumbnail: contentInfo?.thumbnail,
+        channel: contentInfo?.uploaderName,
         format: selectedFormat,
         audioOnly: formatObj?.isAudioOnly || false,
         source: 'app',

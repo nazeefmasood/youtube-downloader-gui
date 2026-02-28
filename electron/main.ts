@@ -8,7 +8,12 @@ import { startPotTokenServer, cleanupPotTokenServer, getPotTokenStatus } from '.
 import { logger } from './logger'
 import { binaryManager } from './binaryManager'
 import { updater, UpdateInfo, UpdateProgress } from './updater'
+import { subscriptionManager, Subscription, NewVideo } from './subscriptions'
+import { getAnalyticsManager, DownloadRecord } from './analytics'
+import { TrayManager } from './trayManager'
+import { setupAnalyticsHandlers } from './analyticsHandlers'
 import * as http from 'http'
+import * as crypto from 'crypto'
 
 interface StoreData {
   settings: Record<string, unknown>
@@ -45,7 +50,7 @@ class SimpleStore {
             lastVersionLaunched: null,
             lastUpdateCheck: null,
             updateSkippedVersion: null,
-            changelogSeenForVersion: app.getVersion(),
+            changelogSeenForVersion: '',
           },
           ...data,
         }
@@ -60,7 +65,7 @@ class SimpleStore {
         lastVersionLaunched: null,
         lastUpdateCheck: null,
         updateSkippedVersion: null,
-        changelogSeenForVersion: app.getVersion(),
+        changelogSeenForVersion: '',
       },
     }
   }
@@ -92,8 +97,14 @@ let store: SimpleStore
 let mainWindow: BrowserWindow | null = null
 let downloader: Downloader | null = null
 let queueManager: QueueManager | null = null
+let trayManager: TrayManager | null = null
 let httpServer: http.Server | null = null
 let potStatusInterval: NodeJS.Timeout | null = null
+
+// Mini mode state
+let isMiniMode = false
+let normalWindowBounds = { width: 1100, height: 750, x: 0, y: 0 }
+const MINI_WINDOW_SIZE = { width: 300, height: 400 }
 
 function getIconPath(): string {
   const isDev = process.env.NODE_ENV === 'development' || !app.isPackaged
@@ -138,11 +149,24 @@ function createWindow() {
     // Check for changelog display
     const updateState = store.get('updateState')
     const currentVersion = app.getVersion()
-    if (updateState.lastVersionLaunched !== currentVersion) {
-      // First launch after update - show changelog
+
+    // Show changelog if:
+    // 1. First launch (lastVersionLaunched is null) OR
+    // 2. App was updated (lastVersionLaunched differs from currentVersion)
+    // AND the user hasn't already seen the changelog for this version
+    const isFirstLaunch = updateState.lastVersionLaunched === null
+    const isAppUpdated = updateState.lastVersionLaunched !== null && updateState.lastVersionLaunched !== currentVersion
+    const hasNotSeenChangelog = updateState.changelogSeenForVersion !== currentVersion
+
+    logger.info('Changelog check', `current=${currentVersion}, lastLaunched=${updateState.lastVersionLaunched}, seenFor=${updateState.changelogSeenForVersion}`)
+
+    if ((isFirstLaunch || isAppUpdated) && hasNotSeenChangelog) {
+      logger.info('Showing changelog', `reason: ${isFirstLaunch ? 'first launch' : 'app updated'}`)
       mainWindow?.webContents.send('update:show-changelog', currentVersion)
-      store.set('updateState', { ...updateState, lastVersionLaunched: currentVersion })
     }
+
+    // Update the last launched version
+    store.set('updateState', { ...updateState, lastVersionLaunched: currentVersion })
 
     // Check for updates after page is fully loaded
     setTimeout(() => {
@@ -161,6 +185,25 @@ function createWindow() {
 
   mainWindow.on('closed', () => {
     mainWindow = null
+  })
+
+  // Intercept window close - minimize to tray instead
+  mainWindow.on('close', (event) => {
+    if (!mainWindow) return
+
+    // Get the close-to-tray setting (default to true)
+    const settings = store.get('settings')
+    const closeToTray = (settings.closeToTray as boolean) ?? true
+
+    if (closeToTray) {
+      // Prevent default close behavior
+      event.preventDefault()
+
+      // Hide window instead of closing
+      mainWindow.hide()
+
+      logger.info('Window minimized to tray')
+    }
   })
 
   // Add context menu for copy/paste
@@ -190,6 +233,16 @@ function createWindow() {
   // Initialize queue manager
   queueManager = new QueueManager()
 
+  // Setup analytics handlers
+  setupAnalyticsHandlers(queueManager)
+
+  // Initialize tray manager
+  trayManager = new TrayManager(queueManager)
+  trayManager.setMainWindow(mainWindow)
+  trayManager.initialize().catch((error) => {
+    console.error('Failed to initialize tray:', error)
+  })
+
   // Set up queue manager listeners
   queueManager.on('update', (status: QueueStatus) => {
     mainWindow?.webContents.send('queue:update', status)
@@ -203,6 +256,8 @@ function createWindow() {
     thumbnail?: string
     filePath?: string
     audioOnly: boolean
+    batchGroupId?: string
+    batchCompleted?: boolean
   }) => {
     const historyItem = {
       id: `queue-${item.id}-${Date.now()}`,
@@ -220,6 +275,11 @@ function createWindow() {
     logger.info('Added to history', item.title)
     // Notify frontend to update history
     mainWindow?.webContents.send('history:added', historyItem)
+
+    // Notify frontend when entire batch is complete
+    if (item.batchCompleted) {
+      mainWindow?.webContents.send('batch:complete', { batchGroupId: item.batchGroupId })
+    }
   })
 
   // Start HTTP server for extension communication
@@ -291,6 +351,46 @@ function createWindow() {
   })
 }
 
+// Mini mode functions
+function toggleMiniMode(): void {
+  if (!mainWindow) return
+
+  if (isMiniMode) {
+    // Exit mini mode - restore normal size
+    const bounds = mainWindow.getBounds()
+    mainWindow.setMinimumSize(900, 600)
+    mainWindow.setSize(normalWindowBounds.width, normalWindowBounds.height)
+    mainWindow.setPosition(normalWindowBounds.x, normalWindowBounds.y)
+    mainWindow.setAlwaysOnTop(false)
+    isMiniMode = false
+    mainWindow.webContents.send('mini-mode:changed', false)
+  } else {
+    // Enter mini mode
+    const bounds = mainWindow.getBounds()
+    normalWindowBounds = { width: bounds.width, height: bounds.height, x: bounds.x, y: bounds.y }
+
+    mainWindow.setMinimumSize(MINI_WINDOW_SIZE.width, MINI_WINDOW_SIZE.height)
+    mainWindow.setSize(MINI_WINDOW_SIZE.width, MINI_WINDOW_SIZE.height)
+
+    // Center mini window on screen or keep current position
+    const workArea = require('electron').screen.getPrimaryDisplay().workAreaSize
+    const x = Math.max(0, Math.min(bounds.x, workArea.width - MINI_WINDOW_SIZE.width))
+    const y = Math.max(0, Math.min(bounds.y, workArea.height - MINI_WINDOW_SIZE.height))
+    mainWindow.setPosition(x, y)
+
+    isMiniMode = true
+    mainWindow.webContents.send('mini-mode:changed', true)
+  }
+}
+
+function setAlwaysOnTop(enabled: boolean): void {
+  mainWindow?.setAlwaysOnTop(enabled, 'normal')
+}
+
+function getMiniModeState(): boolean {
+  return isMiniMode
+}
+
 app.whenReady().then(() => {
   store = new SimpleStore()
   logger.logStartup()
@@ -324,6 +424,9 @@ function cleanup() {
   }
   if (downloader) {
     downloader.removeAllListeners()
+  }
+  if (trayManager) {
+    trayManager.destroy()
   }
 }
 
@@ -359,8 +462,38 @@ ipcMain.handle('window:close', () => {
   mainWindow?.close()
 })
 
+ipcMain.handle('window:minimizeToTray', () => {
+  mainWindow?.hide()
+})
+
+ipcMain.handle('window:forceQuit', () => {
+  // Destroy tray to prevent re-showing
+  if (trayManager) {
+    trayManager.destroy()
+    trayManager = null
+  }
+
+  // Force quit the app
+  mainWindow?.destroy()
+  app.quit()
+})
+
 ipcMain.handle('window:isMaximized', () => {
   return mainWindow?.isMaximized() ?? false
+})
+
+// Mini mode IPC handlers
+ipcMain.handle('mini:toggle', () => {
+  toggleMiniMode()
+  return getMiniModeState()
+})
+
+ipcMain.handle('mini:setAlwaysOnTop', (_event, enabled: boolean) => {
+  setAlwaysOnTop(enabled)
+})
+
+ipcMain.handle('mini:getState', () => {
+  return getMiniModeState()
 })
 
 // URL Detection
@@ -416,6 +549,23 @@ ipcMain.handle('subtitles:get', async (_event, url: string) => {
     return subtitles
   } catch (error) {
     logger.error('Get subtitles failed', error instanceof Error ? error : String(error))
+    throw error
+  }
+})
+
+// Search YouTube
+ipcMain.handle('search:youtube', async (_event, query: string, maxResults?: number) => {
+  if (!downloader) {
+    logger.error('Search failed', 'Downloader not initialized')
+    throw new Error('Downloader not initialized')
+  }
+  try {
+    logger.info('Searching YouTube', query)
+    const results = await downloader.searchYouTube(query, maxResults || 20)
+    logger.info('Search completed', `Found ${results.length} results`)
+    return results
+  } catch (error) {
+    logger.error('Search failed', error instanceof Error ? error : String(error))
     throw error
   }
 })
@@ -477,6 +627,8 @@ ipcMain.handle('settings:get', () => {
     maxConcurrentDownloads: 1,
     delayBetweenDownloads: 5000,
     theme: 'dark',
+    selectedTheme: 'purple',  // Default color theme
+    customAccentColor: '#8b5cf6',  // Default purple accent
     fontSize: 'medium',
     batchSize: 25,
     batchPauseShort: 5,
@@ -485,13 +637,35 @@ ipcMain.handle('settings:get', () => {
     potTokenEnabled: true,
     potTokenPort: 4416,
     potTokenTTL: 360,
+    speedLimit: '',  // Empty = unlimited
+    soundEnabled: true,
+    soundVolume: 50,
+    closeToTray: true,  // Minimize to system tray instead of closing
+    autoRetryEnabled: true,
+    maxRetries: 3,
   }
   return { ...defaults, ...store.get('settings') }
 })
 
 ipcMain.handle('settings:save', (_event, settings: Record<string, unknown>) => {
   const current = store.get('settings')
-  store.set('settings', { ...current, ...settings })
+  const newSettings = { ...current, ...settings }
+  store.set('settings', newSettings)
+
+  // Sync settings to queueManager immediately so changes take effect for new downloads
+  if (queueManager) {
+    queueManager.setSettings({
+      organizeByType: newSettings.organizeByType as boolean ?? true,
+      delayBetweenDownloads: newSettings.delayBetweenDownloads as number ?? 2000,
+      batchSize: newSettings.batchSize as number ?? 25,
+      batchPauseShort: newSettings.batchPauseShort as number ?? 5,
+      batchPauseLong: newSettings.batchPauseLong as number ?? 10,
+      batchDownloadEnabled: newSettings.batchDownloadEnabled as boolean ?? true,
+      speedLimit: newSettings.speedLimit as string ?? '',
+      maxRetries: newSettings.maxRetries as number ?? 3,
+      autoRetryEnabled: newSettings.autoRetryEnabled as boolean ?? true,
+    })
+  }
 })
 
 // History
@@ -554,6 +728,7 @@ ipcMain.handle('queue:add', (_event, item: {
   url: string
   title: string
   thumbnail?: string
+  channel?: string
   format: string
   qualityLabel?: string
   audioOnly: boolean
@@ -582,6 +757,8 @@ ipcMain.handle('queue:add', (_event, item: {
     batchPauseShort: settings.batchPauseShort as number ?? 5,
     batchPauseLong: settings.batchPauseLong as number ?? 10,
     batchDownloadEnabled: settings.batchDownloadEnabled as boolean ?? true,
+    speedLimit: settings.speedLimit as string ?? '',
+    maxRetries: settings.maxRetries as number ?? 3,
   })
 
   return queueManager.addItem(item)
@@ -632,6 +809,31 @@ ipcMain.handle('queue:retryAllFailed', () => {
   return queueManager.retryAllFailed()
 })
 
+ipcMain.handle('queue:cancelRetry', (_event, id: string) => {
+  if (!queueManager) throw new Error('Queue manager not initialized')
+  return queueManager.cancelRetry(id)
+})
+
+ipcMain.handle('queue:setAutoRetry', (_event, id: string, enabled: boolean) => {
+  if (!queueManager) throw new Error('Queue manager not initialized')
+  return queueManager.setItemAutoRetry(id, enabled)
+})
+
+ipcMain.handle('queue:getAutoRetry', (_event, id: string) => {
+  if (!queueManager) throw new Error('Queue manager not initialized')
+  return queueManager.getItemAutoRetry(id)
+})
+
+ipcMain.handle('queue:setPriority', (_event, id: string, priority: number) => {
+  if (!queueManager) throw new Error('Queue manager not initialized')
+  return queueManager.setItemPriority(id, priority)
+})
+
+ipcMain.handle('queue:getPriority', (_event, id: string) => {
+  if (!queueManager) throw new Error('Queue manager not initialized')
+  return queueManager.getItemPriority(id)
+})
+
 // PO Token IPC handlers
 ipcMain.handle('pot:getStatus', () => {
   return getPotTokenStatus()
@@ -643,6 +845,61 @@ ipcMain.handle('pot:restart', async () => {
   const potPort = (settings.potTokenPort as number) || 4416
   const potTTL = (settings.potTokenTTL as number) || 360
   await startPotTokenServer(potPort, potTTL)
+})
+
+// Subscription IPC handlers
+ipcMain.handle('subscriptions:getAll', () => {
+  return subscriptionManager.getSubscriptions()
+})
+
+ipcMain.handle('subscriptions:add', async (_event, url: string) => {
+  const info = await subscriptionManager.detectSubscriptionInfo(url)
+  if (!info) {
+    throw new Error('Could not detect subscription info from URL')
+  }
+  return subscriptionManager.addSubscription(url, info.name, info.type, info.thumbnail)
+})
+
+ipcMain.handle('subscriptions:remove', (_event, id: string) => {
+  return subscriptionManager.removeSubscription(id)
+})
+
+ipcMain.handle('subscriptions:checkNew', async () => {
+  return await subscriptionManager.checkForNewVideos()
+})
+
+// New videos notification on app launch
+let lastSubscriptionCheck = 0
+const SUBSCRIPTION_CHECK_INTERVAL = 2 * 60 * 60 * 1000 // 2 hours
+
+async function checkSubscriptionsAndNotify() {
+  const subscriptions = subscriptionManager.getSubscriptions()
+  if (subscriptions.length === 0) return
+
+  logger.info('Checking subscriptions for new videos...')
+  const newVideos = await subscriptionManager.checkForNewVideos()
+
+  if (newVideos.length > 0 && mainWindow) {
+    logger.info('New videos found', `${newVideos.length} videos`)
+    mainWindow.webContents.send('subscriptions:newVideos', newVideos)
+  }
+}
+
+// Check on app launch and periodically
+app.whenReady().then(() => {
+  // Check subscriptions 5 seconds after launch
+  setTimeout(() => {
+    checkSubscriptionsAndNotify()
+  }, 5000)
+
+  // Set up periodic checking every 2 hours
+  setInterval(() => {
+    const now = Date.now()
+    if (now - lastSubscriptionCheck >= SUBSCRIPTION_CHECK_INTERVAL) {
+      lastSubscriptionCheck = now
+      checkSubscriptionsAndNotify()
+    }
+  }, SUBSCRIPTION_CHECK_INTERVAL)
 })
 
 // Logger IPC handlers
@@ -769,11 +1026,22 @@ function parseLocalChangelog(): ReturnType<typeof getEmptyChangelog>[] {
       if (fs.existsSync(p)) {
         logger.info(`Found CHANGELOG.md at: ${p}`)
         const content = fs.readFileSync(p, 'utf-8')
-        return parseChangelogContent(content)
+        logger.info(`CHANGELOG.md size: ${content.length} bytes`)
+
+        if (!content || content.trim().length === 0) {
+          logger.warn('CHANGELOG.md file is empty')
+          continue // Try next path
+        }
+
+        const parsed = parseChangelogContent(content)
+        if (parsed.length > 0) {
+          return parsed
+        }
+        logger.warn(`Failed to parse CHANGELOG.md at ${p}, trying next path`)
       }
     }
 
-    logger.warn('CHANGELOG.md not found in any location')
+    logger.warn('CHANGELOG.md not found or empty in all locations')
     return []
   } catch (err) {
     logger.error('Failed to parse changelog', err instanceof Error ? err.message : String(err))
@@ -784,12 +1052,19 @@ function parseLocalChangelog(): ReturnType<typeof getEmptyChangelog>[] {
 // Parse changelog content string
 function parseChangelogContent(content: string): ReturnType<typeof getEmptyChangelog>[] {
   try {
+    if (!content || content.trim().length === 0) {
+      logger.warn('Changelog content is empty')
+      return []
+    }
+
     const versions: ReturnType<typeof getEmptyChangelog>[] = []
 
     // Split by version headers
     const versionRegex = /## \[([^\]]+)\]\s*-\s*(\d{4}-\d{2}-\d{2})/g
     let match
     const sections = content.split(/## \[[^\]]+\]/)
+
+    logger.info('Parsing changelog', `found ${sections.length - 1} version sections`)
 
     // First section is the header, skip it
     let sectionIndex = 1
@@ -801,16 +1076,20 @@ function parseChangelogContent(content: string): ReturnType<typeof getEmptyChang
 
       // Parse each subsection
       const parseSection = (header: string): string[] => {
-        const sectionRegex = new RegExp(`### ${header}\\n([\\s\\S]*?)(?=### |## |$)`, 'i')
-        const sectionMatch = sectionContent.match(sectionRegex)
-        if (!sectionMatch) return []
+        try {
+          const sectionRegex = new RegExp(`### ${header}\\n([\\s\\S]*?)(?=### |## |$)`, 'i')
+          const sectionMatch = sectionContent.match(sectionRegex)
+          if (!sectionMatch) return []
 
-        return sectionMatch[1]
-          .split('\n')
-          .map(line => line.trim())
-          .filter(line => line.startsWith('- '))
-          .map(line => line.substring(2).trim())
-          .filter(line => line.length > 0)
+          return sectionMatch[1]
+            .split('\n')
+            .map(line => line.trim())
+            .filter(line => line.startsWith('- '))
+            .map(line => line.substring(2).trim())
+            .filter(line => line.length > 0)
+        } catch {
+          return []
+        }
       }
 
       const versionData = {
@@ -830,6 +1109,7 @@ function parseChangelogContent(content: string): ReturnType<typeof getEmptyChang
           versionData.sections.fixed.length > 0 ||
           versionData.sections.removed.length > 0) {
         versions.push(versionData)
+        logger.info(`Parsed version ${version}`, `added=${versionData.sections.added.length}, changed=${versionData.sections.changed.length}, fixed=${versionData.sections.fixed.length}`)
       }
 
       sectionIndex++
@@ -846,4 +1126,195 @@ function parseChangelogContent(content: string): ReturnType<typeof getEmptyChang
 // Fetch changelog from local file only
 ipcMain.handle('update:fetchChangelog', async () => {
   return parseLocalChangelog()
+})
+
+// Queue Export/Import IPC handlers
+interface QueueExportData {
+  version: string
+  exportedAt: string
+  items: Array<{
+    url: string
+    title: string
+    thumbnail?: string
+    format: string
+    qualityLabel?: string
+    audioOnly: boolean
+    sourceType?: 'single' | 'playlist' | 'channel'
+    contentType?: 'video' | 'audio' | 'subtitle' | 'video+sub'
+    subtitleOptions?: {
+      enabled: boolean
+      languages: string[]
+      includeAutoGenerated: boolean
+      format: 'srt' | 'vtt' | 'ass'
+      embedInVideo: boolean
+    }
+    subtitleDisplayNames?: string
+  }>
+}
+
+ipcMain.handle('queue:export', async () => {
+  if (!queueManager) throw new Error('Queue manager not initialized')
+
+  const status = queueManager.getStatus()
+  const itemsToExport = status.items.filter(
+    item => item.status === 'pending' || item.status === 'failed'
+  )
+
+  const exportData: QueueExportData = {
+    version: '1.0',
+    exportedAt: new Date().toISOString(),
+    items: itemsToExport.map(item => ({
+      url: item.url,
+      title: item.title,
+      thumbnail: item.thumbnail,
+      format: item.format,
+      qualityLabel: item.qualityLabel,
+      audioOnly: item.audioOnly,
+      sourceType: item.sourceType,
+      contentType: item.contentType,
+      subtitleOptions: item.subtitleOptions,
+      subtitleDisplayNames: item.subtitleDisplayNames,
+    }))
+  }
+
+  const result = await dialog.showSaveDialog(mainWindow!, {
+    title: 'Export Queue',
+    defaultPath: `queue-export-${new Date().toISOString().split('T')[0]}.json`,
+    filters: [
+      { name: 'JSON Files', extensions: ['json'] },
+      { name: 'All Files', extensions: ['*'] }
+    ]
+  })
+
+  if (result.canceled || !result.filePath) {
+    return { canceled: true }
+  }
+
+  try {
+    fs.writeFileSync(result.filePath, JSON.stringify(exportData, null, 2), 'utf-8')
+    logger.info('Queue exported', `Path: ${result.filePath}, Items: ${itemsToExport.length}`)
+    return { success: true, path: result.filePath, itemCount: itemsToExport.length }
+  } catch (error) {
+    logger.error('Failed to export queue', error instanceof Error ? error.message : String(error))
+    throw new Error(`Failed to export queue: ${error}`)
+  }
+})
+
+ipcMain.handle('queue:import', async () => {
+  if (!queueManager) throw new Error('Queue manager not initialized')
+
+  const result = await dialog.showOpenDialog(mainWindow!, {
+    title: 'Import Queue',
+    filters: [
+      { name: 'JSON Files', extensions: ['json'] },
+      { name: 'All Files', extensions: ['*'] }
+    ],
+    properties: ['openFile']
+  })
+
+  if (result.canceled || result.filePaths.length === 0) {
+    return { canceled: true }
+  }
+
+  const filePath = result.filePaths[0]
+
+  try {
+    const content = fs.readFileSync(filePath, 'utf-8')
+    const data = JSON.parse(content) as QueueExportData
+
+    // Validate structure
+    if (!data.version || !Array.isArray(data.items)) {
+      throw new Error('Invalid queue file format')
+    }
+
+    const currentStatus = queueManager.getStatus()
+    const hasExistingItems = currentStatus.items.length > 0
+
+    let mode: 'merge' | 'replace' = 'merge'
+
+    if (hasExistingItems) {
+      const confirmResult = await dialog.showMessageBox(mainWindow!, {
+        type: 'question',
+        buttons: ['Merge', 'Replace', 'Cancel'],
+        defaultId: 0,
+        title: 'Import Queue',
+        message: 'You have existing items in your queue.',
+        detail: `Do you want to merge ${data.items.length} imported items with existing queue, or replace the entire queue?`
+      })
+
+      if (confirmResult.response === 2) {
+        return { canceled: true }
+      }
+      mode = confirmResult.response === 1 ? 'replace' : 'merge'
+    }
+
+    let importedCount = 0
+    const failedItems: Array<{ title: string; error: string }> = []
+
+    // Clear queue if replacing
+    if (mode === 'replace') {
+      queueManager.clear()
+    }
+
+    // Import items
+    const settings = store.get('settings')
+    queueManager.setDownloadPath(settings.downloadPath as string || getDefaultDownloadPath())
+    queueManager.setSettings({
+      organizeByType: settings.organizeByType as boolean ?? true,
+      delayBetweenDownloads: settings.delayBetweenDownloads as number ?? 2000,
+      batchSize: settings.batchSize as number ?? 25,
+      batchPauseShort: settings.batchPauseShort as number ?? 5,
+      batchPauseLong: settings.batchPauseLong as number ?? 10,
+      batchDownloadEnabled: settings.batchDownloadEnabled as boolean ?? true,
+      speedLimit: settings.speedLimit as string ?? '',
+    })
+
+    for (const itemData of data.items) {
+      try {
+        queueManager.addItem({
+          url: itemData.url,
+          title: itemData.title,
+          thumbnail: itemData.thumbnail,
+          format: itemData.format,
+          qualityLabel: itemData.qualityLabel,
+          audioOnly: itemData.audioOnly,
+          source: 'app',
+          sourceType: itemData.sourceType,
+          contentType: itemData.contentType,
+          subtitleOptions: itemData.subtitleOptions,
+          subtitleDisplayNames: itemData.subtitleDisplayNames,
+        })
+        importedCount++
+      } catch (error) {
+        failedItems.push({
+          title: itemData.title,
+          error: error instanceof Error ? error.message : String(error)
+        })
+      }
+    }
+
+    logger.info('Queue imported', `Imported: ${importedCount}, Failed: ${failedItems.length}`)
+    return {
+      success: true,
+      importedCount,
+      failedCount: failedItems.length,
+      failedItems,
+      mode
+    }
+  } catch (error) {
+    logger.error('Failed to import queue', error instanceof Error ? error.message : String(error))
+    throw new Error(`Failed to import queue: ${error}`)
+  }
+})
+
+// Tray IPC handlers
+ipcMain.handle('tray:supported', () => {
+  return TrayManager.isTraySupported()
+})
+
+// Clear taskbar notification badge
+ipcMain.handle('tray:clearBadge', () => {
+  if (trayManager) {
+    trayManager.clearUnreadCount()
+  }
 })

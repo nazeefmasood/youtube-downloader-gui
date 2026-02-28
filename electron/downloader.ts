@@ -199,6 +199,7 @@ interface DownloadOptions {
   organizeByType?: boolean
   delayBetweenDownloads?: number
   subtitleOptions?: SubtitleOptions
+  speedLimit?: string  // e.g., '1M', '5M', '10M', or undefined for unlimited
 }
 
 export class Downloader extends EventEmitter {
@@ -711,8 +712,181 @@ export class Downloader extends EventEmitter {
     }
   }
 
+  async searchYouTube(query: string, maxResults: number = 20): Promise<Array<{
+    id: string
+    title: string
+    thumbnail?: string
+    duration?: number
+    uploader?: string
+    viewCount?: number
+    url: string
+    type: 'video' | 'playlist' | 'channel'
+  }>> {
+    const extractorArgs = await this.getExtractorArgs()
+    const args = [
+      '--dump-json',
+      '--flat-playlist',
+      '--no-warnings',
+      ...extractorArgs,
+      '--sleep-requests', '1',
+      `ytsearch${maxResults}:${query}`,
+    ]
+
+    try {
+      const output = await this.runYtdlp(args, true)
+      const lines = output.trim().split('\n').filter(Boolean)
+      const results: Array<{
+        id: string
+        title: string
+        thumbnail?: string
+        duration?: number
+        uploader?: string
+        viewCount?: number
+        url: string
+        type: 'video' | 'playlist' | 'channel'
+      }> = []
+
+      for (const line of lines) {
+        try {
+          const entry = JSON.parse(line)
+          // Detect type from URL
+          let resultType: 'video' | 'playlist' | 'channel' = 'video'
+          if (entry.url?.includes('/playlist')) {
+            resultType = 'playlist'
+          } else if (entry.url?.includes('/channel/') || entry.url?.includes('/@')) {
+            resultType = 'channel'
+          }
+
+          results.push({
+            id: entry.id || '',
+            title: entry.title || 'Unknown Title',
+            thumbnail: entry.thumbnail || entry.thumbnails?.[0]?.url,
+            duration: entry.duration,
+            uploader: entry.uploader || entry.channel,
+            viewCount: entry.view_count,
+            url: entry.url || `https://www.youtube.com/watch?v=${entry.id}`,
+            type: resultType,
+          })
+        } catch {
+          // Skip malformed JSON lines
+        }
+      }
+
+      logger.info('YouTube search completed', `Found ${results.length} results for "${query}"`)
+      return results
+    } catch (err) {
+      logger.error('YouTube search failed', err instanceof Error ? err.message : String(err))
+      return []
+    }
+  }
+
+  /**
+   * Find the actual downloaded file in the output directory
+   * yt-dlp downloads to the directory with a filename based on the title
+   */
+  private findDownloadedFile(outputDir: string, videoTitle: string, expectedExt: string): string | null {
+    try {
+      const files = fs.readdirSync(outputDir)
+
+      // Look for files that match the video title (sanitized by yt-dlp)
+      // Priority: exact extension match first, then any video/audio file
+      const videoExtensions = ['mp4', 'mkv', 'webm', 'avi', 'mov']
+      const audioExtensions = ['mp3', 'm4a', 'opus', 'wav', 'flac']
+      const subtitleExtensions = ['srt', 'vtt', 'ass']
+
+      // Sanitize title for matching (yt-dlp replaces special chars)
+      const sanitizedTitle = videoTitle
+        .replace(/[<>:"/\\|?*]/g, '')
+        .replace(/\s+/g, ' ')
+        .trim()
+        .toLowerCase()
+
+      logger.info('Finding downloaded file', `Dir: ${outputDir}, Title: "${videoTitle}", Expected ext: ${expectedExt}, Files: ${files.length}`)
+
+      // Collect all candidate files with their stats
+      const candidates: Array<{ file: string; filePath: string; mtime: number; size: number; ext: string; titleMatch: boolean }> = []
+      const targetExtensions = expectedExt === 'mp3' || expectedExt === 'm4a'
+        ? audioExtensions
+        : [...videoExtensions, ...audioExtensions, ...subtitleExtensions]
+
+      for (const file of files) {
+        const filePath = path.join(outputDir, file)
+        let stat: fs.Stats
+        try {
+          stat = fs.statSync(filePath)
+        } catch {
+          continue
+        }
+
+        if (!stat.isFile()) continue
+
+        // Skip partial/temp files
+        if (file.endsWith('.part') || file.endsWith('.ytdl')) continue
+
+        const ext = path.extname(file).toLowerCase().slice(1)
+        const fileName = path.basename(file, path.extname(file)).toLowerCase()
+
+        // Check if this is a media file we care about
+        if (!targetExtensions.includes(ext)) continue
+
+        // Check if file matches title (use first 30 chars for better matching)
+        const titleMatch = fileName.includes(sanitizedTitle.substring(0, 30)) ||
+                           sanitizedTitle.substring(0, 30).includes(fileName.substring(0, 30))
+
+        candidates.push({
+          file,
+          filePath,
+          mtime: stat.mtimeMs,
+          size: stat.size,
+          ext,
+          titleMatch,
+        })
+      }
+
+      logger.info('Download file candidates', `Found ${candidates.length} candidates: ${candidates.map(c => `${c.file} (${(c.size / 1024 / 1024).toFixed(2)}MB, match:${c.titleMatch})`).join(', ')}`)
+
+      // Sort candidates by priority:
+      // 1. Title match + expected extension (highest priority)
+      // 2. Title match + any target extension
+      // 3. Expected extension + largest size
+      // 4. Most recent + largest size
+      candidates.sort((a, b) => {
+        // Title match with expected extension is highest priority
+        const aExpectedAndMatch = a.titleMatch && a.ext === expectedExt.toLowerCase()
+        const bExpectedAndMatch = b.titleMatch && b.ext === expectedExt.toLowerCase()
+        if (aExpectedAndMatch !== bExpectedAndMatch) return aExpectedAndMatch ? -1 : 1
+
+        // Then title match with any extension
+        if (a.titleMatch !== b.titleMatch) return a.titleMatch ? -1 : 1
+
+        // Then by modification time (newest first)
+        return b.mtime - a.mtime
+      })
+
+      // Return the best candidate that's at least 1KB (not a placeholder)
+      for (const candidate of candidates) {
+        if (candidate.size > 1024) {
+          logger.info('Selected downloaded file', `${candidate.filePath} (${(candidate.size / 1024 / 1024).toFixed(2)}MB, titleMatch: ${candidate.titleMatch})`)
+          return candidate.filePath
+        }
+      }
+
+      // Fallback: return the most recent file if any exist
+      if (candidates.length > 0) {
+        logger.info('Selected fallback file (small)', `${candidates[0].filePath} (${candidates[0].size} bytes)`)
+        return candidates[0].filePath
+      }
+
+      logger.warn('No downloaded file found', `Could not find media file in ${outputDir}`)
+      return null
+    } catch (err) {
+      logger.error('Failed to find downloaded file', err instanceof Error ? err.message : String(err))
+      return null
+    }
+  }
+
   async download(options: DownloadOptions): Promise<void> {
-    const { url, title, format, audioOnly, outputPath, organizeByType, delayBetweenDownloads = 2000, subtitleOptions } = options
+    const { url, title, format, audioOnly, outputPath, organizeByType, delayBetweenDownloads = 2000, subtitleOptions, speedLimit } = options
     this.cancelled = false
 
     // Use provided title instead of re-detecting (avoids 403 errors and unnecessary API calls)
@@ -735,6 +909,9 @@ export class Downloader extends EventEmitter {
       '--fragment-retries', '10',
       '--extractor-retries', '5',
       '--file-access-retries', '5',
+      // Performance optimizations for faster downloads
+      '--concurrent-fragments', '4',   // Download 4 fragments in parallel (2-3x faster)
+      '--buffer-size', '16K',          // Larger buffer for better I/O throughput
       // Aggressive rate limiting to avoid 429 Too Many Requests
       '--sleep-requests', '2',
       '--sleep-interval', '2',         // Sleep 2s between downloads
@@ -742,6 +919,8 @@ export class Downloader extends EventEmitter {
       '--socket-timeout', '60',        // Increased timeout
       // Use native HLS downloader for better m3u8 handling
       '--hls-prefer-native',
+      // Print video metadata as JSON before download to extract channel info
+      '--print', 'before_dl:%(channel)s|%(uploader)s',
     ]
 
     // FFmpeg location - yt-dlp expects the DIRECTORY containing ffmpeg, not the executable path
@@ -812,6 +991,12 @@ export class Downloader extends EventEmitter {
       args.push('--sleep-subtitles', '2')
     }
 
+    // Speed limit (bandwidth throttling)
+    if (speedLimit) {
+      args.push('--limit-rate', speedLimit)
+      logger.info('Speed limit enabled', `${speedLimit}`)
+    }
+
     args.push(url)
 
 
@@ -833,6 +1018,7 @@ export class Downloader extends EventEmitter {
       const currentIndex = 1
       const totalFiles = 1
       let stderrOutput = ''
+      let extractedChannel: string | undefined
 
       // Emit initial progress immediately so UI shows progress bar
       this.emit('progress', {
@@ -850,6 +1036,19 @@ export class Downloader extends EventEmitter {
         const lines = output.split('\n')
 
         for (const line of lines) {
+          // Extract channel info from before_dl output: "channel_name|uploader_name"
+          if (line.includes('|') && !line.includes('[') && !line.includes('%')) {
+            const parts = line.trim().split('|')
+            if (parts.length === 2) {
+              const channel = parts[0] || parts[1] // Prefer channel, fallback to uploader
+              if (channel && channel !== 'NA' && channel !== 'None') {
+                extractedChannel = channel
+                logger.info('Extracted channel from video metadata', channel)
+              }
+            }
+            continue
+          }
+
           // Parse progress: [download]  45.2% of 50.00MiB at 2.50MiB/s ETA 00:11
           const progressMatch = line.match(/\[download\]\s+(\d+\.?\d*)%\s+of\s+~?(\S+)\s+at\s+(\S+)\s+ETA\s+(\S+)/)
           if (progressMatch) {
@@ -920,7 +1119,10 @@ export class Downloader extends EventEmitter {
             totalFiles: 1,
             status: 'complete',
           })
-          this.emit('complete', { success: true, filePath: outputDir })
+          // Find the actual downloaded file in the output directory
+          const expectedExt = audioOnly ? (format.includes('m4a') ? 'm4a' : 'mp3') : 'mp4'
+          const downloadedFile = this.findDownloadedFile(outputDir, videoTitle, expectedExt)
+          this.emit('complete', { success: true, filePath: downloadedFile || outputDir, channel: extractedChannel })
           resolve()
         } else {
           // Extract meaningful error from stderr

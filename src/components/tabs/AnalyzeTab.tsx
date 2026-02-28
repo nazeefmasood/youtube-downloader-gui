@@ -1,6 +1,11 @@
-import { useCallback, useEffect, useState, useRef } from 'react'
+import { useCallback, useEffect, useState, useRef, forwardRef, useImperativeHandle } from 'react'
 import { useDownloadStore } from '../../stores/downloadStore'
-import type { SubtitleInfo, PlaylistSelectionMode, VideoFormat } from '../../types'
+import type { SubtitleInfo, PlaylistSelectionMode, VideoFormat, SearchResult } from '../../types'
+
+export interface AnalyzeTabRef {
+  pasteAndAnalyze: () => Promise<void>
+  focusInput: () => void
+}
 
 interface AnalyzeTabProps {
   onAddToQueue: () => void
@@ -9,8 +14,18 @@ interface AnalyzeTabProps {
 // Cache subtitles by video ID to avoid refetching
 const subtitleCache = new Map<string, SubtitleInfo[]>()
 
-export function AnalyzeTab({ onAddToQueue }: AnalyzeTabProps) {
+// Multi-URL detection types
+interface DetectedUrl {
+  url: string
+  type: 'video' | 'playlist' | 'channel' | 'unknown'
+  id: string | null
+  isValid: boolean
+  selected: boolean
+}
+
+export const AnalyzeTab = forwardRef<AnalyzeTabRef, AnalyzeTabProps>(function AnalyzeTab({ onAddToQueue }, ref) {
   const [urlInput, setUrlInput] = useState('')
+  const inputRef = useRef<HTMLInputElement>(null)
   const [selectedVideos, setSelectedVideos] = useState<Set<number>>(new Set())
   const [playlistSelectionMode, setPlaylistSelectionMode] = useState<PlaylistSelectionMode>('all')
   const [rangeStart, setRangeStart] = useState<number>(1)
@@ -31,6 +46,29 @@ export function AnalyzeTab({ onAddToQueue }: AnalyzeTabProps) {
   const [embedSubs, setEmbedSubs] = useState(false)
   const [subFormat, setSubFormat] = useState<'srt' | 'vtt' | 'ass'>('srt')
   const [isLoadingSubtitles, setIsLoadingSubtitles] = useState(false)
+
+  // Search state
+  const [searchResults, setSearchResults] = useState<SearchResult[]>([])
+  const [isSearching, setIsSearching] = useState(false)
+  const [hasSearched, setHasSearched] = useState(false)
+  const [searchError, setSearchError] = useState<string | null>(null)
+  const [inputMode, setInputMode] = useState<'url' | 'search'>('url')
+
+  // Search result format selection state
+  const [analyzingSearchResult, setAnalyzingSearchResult] = useState<SearchResult | null>(null)
+  const [searchResultFormats, setSearchResultFormats] = useState<VideoFormat[]>([])
+  const [isLoadingSearchFormats, setIsLoadingSearchFormats] = useState(false)
+  const [selectedSearchFormat, setSelectedSearchFormat] = useState<string | null>(null)
+  const [isLoadingMore, setIsLoadingMore] = useState(false)
+  const [hasMoreResults, setHasMoreResults] = useState(true)
+
+  // Multi-URL batch paste state
+  const [showMultiUrlModal, setShowMultiUrlModal] = useState(false)
+  const [detectedUrls, setDetectedUrls] = useState<DetectedUrl[]>([])
+  const [isAddingBatch, setIsAddingBatch] = useState(false)
+
+  // Drag & drop state
+  const [isDragOver, setIsDragOver] = useState(false)
 
   const {
     contentInfo,
@@ -62,17 +100,440 @@ export function AnalyzeTab({ onAddToQueue }: AnalyzeTabProps) {
     }
   }
 
-  const handleAnalyze = useCallback(() => {
-    if (urlInput.trim()) {
-      detectUrl(urlInput.trim())
+  // Detect if input is a URL or search query
+  const isUrl = useCallback((input: string): boolean => {
+    try {
+      new URL(input)
+      return true
+    } catch {
+      return false
     }
-  }, [urlInput, detectUrl])
+  }, [])
+
+  // Parse a single URL and detect its type (YouTube video/playlist/channel)
+  const parseYouTubeUrl = useCallback((url: string): DetectedUrl => {
+    try {
+      const parsed = new URL(url)
+
+      // Handle YouTube domains
+      const isYouTube =
+        parsed.hostname === 'www.youtube.com' ||
+        parsed.hostname === 'youtube.com' ||
+        parsed.hostname === 'm.youtube.com' ||
+        parsed.hostname === 'youtu.be' ||
+        parsed.hostname === 'www.youtu.be'
+
+      if (!isYouTube) {
+        return { url, type: 'unknown', id: null, isValid: false, selected: false }
+      }
+
+      // Handle youtu.be short links
+      if (parsed.hostname === 'youtu.be' || parsed.hostname === 'www.youtu.be') {
+        const videoId = parsed.pathname.slice(1)
+        if (videoId) {
+          return { url, type: 'video', id: videoId, isValid: true, selected: true }
+        }
+        return { url, type: 'unknown', id: null, isValid: false, selected: false }
+      }
+
+      // Handle youtube.com URLs
+      const pathname = parsed.pathname
+
+      // Playlist: /playlist?list=PL...
+      if (pathname === '/playlist') {
+        const listId = parsed.searchParams.get('list')
+        if (listId) {
+          return { url, type: 'playlist', id: listId, isValid: true, selected: true }
+        }
+        return { url, type: 'unknown', id: null, isValid: false, selected: false }
+      }
+
+      // Channel: /channel/UC... or /@username or /c/customname
+      if (pathname.startsWith('/channel/')) {
+        const channelId = pathname.split('/')[2]
+        if (channelId) {
+          return { url, type: 'channel', id: channelId, isValid: true, selected: true }
+        }
+      } else if (pathname.startsWith('/@')) {
+        const username = pathname.slice(2)
+        if (username) {
+          return { url, type: 'channel', id: username, isValid: true, selected: true }
+        }
+      } else if (pathname.startsWith('/c/')) {
+        const customName = pathname.split('/')[2]
+        if (customName) {
+          return { url, type: 'channel', id: customName, isValid: true, selected: true }
+        }
+      } else if (pathname.startsWith('/user/')) {
+        const username = pathname.split('/')[2]
+        if (username) {
+          return { url, type: 'channel', id: username, isValid: true, selected: true }
+        }
+      }
+
+      // Video: /watch?v=... (may also have &list= for playlist context)
+      if (pathname === '/watch' || pathname === '/watch/') {
+        const videoId = parsed.searchParams.get('v')
+        if (videoId) {
+          return { url, type: 'video', id: videoId, isValid: true, selected: true }
+        }
+      }
+
+      // Shorts: /shorts/VIDEO_ID
+      if (pathname.startsWith('/shorts/')) {
+        const videoId = pathname.split('/')[2]
+        if (videoId) {
+          return { url, type: 'video', id: videoId, isValid: true, selected: true }
+        }
+      }
+
+      // Live: /live/VIDEO_ID
+      if (pathname.startsWith('/live/')) {
+        const videoId = pathname.split('/')[2]
+        if (videoId) {
+          return { url, type: 'video', id: videoId, isValid: true, selected: true }
+        }
+      }
+
+      // Embed: /embed/VIDEO_ID
+      if (pathname.startsWith('/embed/')) {
+        const videoId = pathname.split('/')[2]
+        if (videoId) {
+          return { url, type: 'video', id: videoId, isValid: true, selected: true }
+        }
+      }
+
+      return { url, type: 'unknown', id: null, isValid: false, selected: false }
+    } catch {
+      return { url, type: 'unknown', id: null, isValid: false, selected: false }
+    }
+  }, [])
+
+  // Parse multiple URLs from text (newline or comma separated)
+  const parseMultipleUrls = useCallback((text: string): DetectedUrl[] => {
+    // Split by newlines, commas, or both
+    const lines = text
+      .split(/[\n,]+/)
+      .map(line => line.trim())
+      .filter(line => line.length > 0)
+
+    const results: DetectedUrl[] = []
+    const seenUrls = new Set<string>()
+
+    for (const line of lines) {
+      // Try to extract URL from the line (might have surrounding text)
+      let urlMatch = line
+
+      // If it looks like it might contain a URL, try to extract it
+      const urlPattern = /(https?:\/\/[^\s]+)/i
+      const match = line.match(urlPattern)
+      if (match) {
+        urlMatch = match[1]
+      } else if (!line.startsWith('http')) {
+        // Skip lines that don't look like URLs
+        continue
+      }
+
+      // Normalize URL (remove trailing punctuation)
+      urlMatch = urlMatch.replace(/[.,;:!?\])]+$/, '')
+
+      // Deduplicate
+      if (seenUrls.has(urlMatch)) {
+        continue
+      }
+      seenUrls.add(urlMatch)
+
+      const parsed = parseYouTubeUrl(urlMatch)
+      results.push(parsed)
+    }
+
+    return results
+  }, [parseYouTubeUrl])
+
+  // Handle YouTube search
+  const handleSearch = useCallback(async () => {
+    if (!urlInput.trim()) return
+
+    setIsSearching(true)
+    setSearchError(null)
+    setHasSearched(true)
+    setHasMoreResults(true)
+
+    try {
+      const results = await window.electronAPI.searchYouTube(urlInput.trim(), 20)
+      setSearchResults(results)
+      // If we got less than requested, there are no more results
+      setHasMoreResults(results.length === 20)
+    } catch (err) {
+      console.error('Search failed:', err)
+      setSearchError(err instanceof Error ? err.message : 'Search failed')
+      setSearchResults([])
+    } finally {
+      setIsSearching(false)
+    }
+  }, [urlInput])
+
+  // Handle loading more search results
+  const handleLoadMore = useCallback(async () => {
+    if (!urlInput.trim() || isLoadingMore || !hasMoreResults) return
+
+    setIsLoadingMore(true)
+
+    try {
+      // Load next batch (current count + 20 more)
+      const currentCount = searchResults.length
+      const totalNeeded = currentCount + 20
+      const results = await window.electronAPI.searchYouTube(urlInput.trim(), totalNeeded)
+      // Only append the NEW results (slice from current count to end)
+      const newResults = results.slice(currentCount)
+      setSearchResults(prev => [...prev, ...newResults])
+      // If we got less than requested, there are no more results
+      setHasMoreResults(results.length === totalNeeded)
+    } catch (err) {
+      console.error('Load more failed:', err)
+    } finally {
+      setIsLoadingMore(false)
+    }
+  }, [urlInput, isLoadingMore, hasMoreResults, searchResults.length])
+
+  // Unified handler - detect URL vs search based on input
+  const handleAnalyze = useCallback(() => {
+    if (!urlInput.trim()) return
+
+    // Check if input is a URL
+    if (isUrl(urlInput.trim())) {
+      // It's a URL - analyze it
+      setInputMode('url')
+      detectUrl(urlInput.trim())
+    } else {
+      // It's a search query - search YouTube
+      setInputMode('search')
+      handleSearch()
+    }
+  }, [urlInput, detectUrl, isUrl, handleSearch])
 
   const handleKeyDown = useCallback((e: React.KeyboardEvent) => {
     if (e.key === 'Enter') {
       handleAnalyze()
     }
   }, [handleAnalyze])
+
+  // Expose methods to parent via ref
+  useImperativeHandle(ref, () => ({
+    focusInput: () => {
+      inputRef.current?.focus()
+    },
+    pasteAndAnalyze: async () => {
+      try {
+        const text = await navigator.clipboard.readText()
+        if (text.trim()) {
+          setUrlInput(text.trim())
+          // Trigger analyze after setting the input
+          if (isUrl(text.trim())) {
+            setInputMode('url')
+            detectUrl(text.trim())
+          } else {
+            setInputMode('search')
+            handleSearch()
+          }
+        }
+      } catch (error) {
+        // Fallback: just focus the input
+        inputRef.current?.focus()
+      }
+    }
+  }), [detectUrl, isUrl, handleSearch])
+
+  // Handle paste event to detect multiple URLs
+  // Drag & drop handlers
+  const handleDragOver = useCallback((e: React.DragEvent) => {
+    e.preventDefault()
+    e.stopPropagation()
+    setIsDragOver(true)
+  }, [])
+
+  const handleDragLeave = useCallback((e: React.DragEvent) => {
+    e.preventDefault()
+    e.stopPropagation()
+    setIsDragOver(false)
+  }, [])
+
+  const handleDrop = useCallback((e: React.DragEvent) => {
+    e.preventDefault()
+    e.stopPropagation()
+    setIsDragOver(false)
+
+    // Get dropped text (URL)
+    const droppedText = e.dataTransfer.getData('text/plain') || e.dataTransfer.getData('text/uri-list')
+    if (droppedText.trim()) {
+      setUrlInput(droppedText.trim())
+      // Auto-analyze the dropped URL
+      setTimeout(() => {
+        handleAnalyze()
+      }, 100)
+    }
+  }, [handleAnalyze])
+
+  const handlePaste = useCallback((e: React.ClipboardEvent) => {
+    const pastedText = e.clipboardData.getData('text')
+    const urls = parseMultipleUrls(pastedText)
+
+    // If multiple URLs detected, show the preview modal
+    if (urls.length > 1) {
+      e.preventDefault()
+      setDetectedUrls(urls)
+      setShowMultiUrlModal(true)
+    }
+    // If only one URL, let the default paste behavior happen
+    // and it will be handled by the normal analyze flow
+  }, [parseMultipleUrls])
+
+  // Multi-URL modal handlers
+  const handleMultiUrlToggle = useCallback((index: number) => {
+    setDetectedUrls(prev => {
+      const next = [...prev]
+      next[index] = { ...next[index], selected: !next[index].selected }
+      return next
+    })
+  }, [])
+
+  const handleMultiUrlSelectAll = useCallback(() => {
+    setDetectedUrls(prev => prev.map(u => ({ ...u, selected: true })))
+  }, [])
+
+  const handleMultiUrlDeselectAll = useCallback(() => {
+    setDetectedUrls(prev => prev.map(u => ({ ...u, selected: false })))
+  }, [])
+
+  const handleMultiUrlSelectValid = useCallback(() => {
+    setDetectedUrls(prev => prev.map(u => ({ ...u, selected: u.isValid })))
+  }, [])
+
+  const handleMultiUrlCancel = useCallback(() => {
+    setShowMultiUrlModal(false)
+    setDetectedUrls([])
+  }, [])
+
+  const handleMultiUrlAddSelected = useCallback(async () => {
+    const selectedUrls = detectedUrls.filter(u => u.selected && u.isValid)
+    if (selectedUrls.length === 0) return
+
+    setIsAddingBatch(true)
+    const batchGroupId = `batch-${Date.now()}-${Math.random().toString(36).substr(2, 6)}`
+
+    try {
+      for (const item of selectedUrls) {
+        const srcType = item.type === 'playlist' ? 'playlist' : item.type === 'channel' ? 'channel' : 'single'
+
+        await window.electronAPI.addToQueue({
+          url: item.url,
+          title: item.type === 'video' ? `Video ${item.id}` : item.type === 'playlist' ? `Playlist ${item.id}` : `Channel ${item.id}`,
+          format: 'bestvideo+bestaudio/best',
+          qualityLabel: 'Best Quality',
+          audioOnly: false,
+          source: 'app',
+          sourceType: srcType,
+          contentType: 'video',
+          batchGroupId,
+        })
+      }
+
+      // Close modal and reset state
+      setShowMultiUrlModal(false)
+      setDetectedUrls([])
+      onAddToQueue()
+    } catch (error) {
+      console.error('Failed to add batch URLs:', error)
+    } finally {
+      setIsAddingBatch(false)
+    }
+  }, [detectedUrls, onAddToQueue])
+
+  // Analyze search result to get available formats
+  const handleAnalyzeSearchResult = useCallback(async (result: SearchResult) => {
+    // For playlists/channels, add directly with best quality (no format selection)
+    if (result.type !== 'video') {
+      await window.electronAPI.addToQueue({
+        url: result.url,
+        title: result.title,
+        thumbnail: result.thumbnail,
+        channel: result.uploader,
+        format: 'bestvideo+bestaudio/best',
+        qualityLabel: 'Best Quality',
+        audioOnly: false,
+        source: 'app',
+        sourceType: result.type === 'playlist' ? 'playlist' : 'channel',
+        contentType: 'video',
+      })
+      onAddToQueue()
+      return
+    }
+
+    // For videos, fetch formats and show selection
+    setAnalyzingSearchResult(result)
+    setIsLoadingSearchFormats(true)
+    setSearchResultFormats([])
+    setSelectedSearchFormat(null)
+
+    try {
+      const fetchedFormats = await window.electronAPI.getFormats(result.url)
+      setSearchResultFormats(fetchedFormats)
+      // Auto-select best quality
+      const videoFormats = fetchedFormats.filter((f: VideoFormat) => !f.isAudioOnly)
+      if (videoFormats.length > 0) {
+        setSelectedSearchFormat(videoFormats[0].formatId)
+      }
+    } catch (error) {
+      console.error('Failed to fetch formats:', error)
+      // Fall back to best quality
+      setSearchResultFormats([])
+      setSelectedSearchFormat('bestvideo+bestaudio/best')
+    } finally {
+      setIsLoadingSearchFormats(false)
+    }
+  }, [onAddToQueue])
+
+  // Confirm adding search result to queue with selected format
+  const handleConfirmSearchResultToQueue = useCallback(async () => {
+    if (!analyzingSearchResult) return
+
+    const formatToUse = selectedSearchFormat || 'bestvideo+bestaudio/best'
+    const formatObj = searchResultFormats.find((f) => f.formatId === formatToUse)
+    const isAudio = formatObj?.isAudioOnly || false
+
+    await window.electronAPI.addToQueue({
+      url: analyzingSearchResult.url,
+      title: analyzingSearchResult.title,
+      thumbnail: analyzingSearchResult.thumbnail,
+      channel: analyzingSearchResult.uploader,
+      format: formatToUse,
+      qualityLabel: formatObj?.quality || (isAudio ? 'Audio' : 'Best Quality'),
+      audioOnly: isAudio,
+      source: 'app',
+      sourceType: 'single',
+      contentType: isAudio ? 'audio' : 'video',
+    })
+
+    // Reset and close
+    setAnalyzingSearchResult(null)
+    setSearchResultFormats([])
+    setSelectedSearchFormat(null)
+    onAddToQueue()
+  }, [analyzingSearchResult, selectedSearchFormat, searchResultFormats, onAddToQueue])
+
+  // Cancel format selection for search result
+  const handleCancelSearchFormatSelection = useCallback(() => {
+    setAnalyzingSearchResult(null)
+    setSearchResultFormats([])
+    setSelectedSearchFormat(null)
+  }, [])
+
+  const formatViewCount = (count?: number) => {
+    if (!count) return ''
+    if (count >= 1000000) return `${(count / 1000000).toFixed(1)}M views`
+    if (count >= 1000) return `${(count / 1000).toFixed(1)}K views`
+    return `${count} views`
+  }
 
   // Reset playlist selection when content changes
   useEffect(() => {
@@ -297,6 +758,7 @@ export function AnalyzeTab({ onAddToQueue }: AnalyzeTabProps) {
         url: `https://www.youtube.com/watch?v=${contentInfo.id}`,
         title: contentInfo.title,
         thumbnail: contentInfo.thumbnail,
+        channel: contentInfo.uploaderName,
         format: formatToUse,
         qualityLabel,
         audioOnly: isAudio,
@@ -319,6 +781,7 @@ export function AnalyzeTab({ onAddToQueue }: AnalyzeTabProps) {
           url: `https://www.youtube.com/watch?v=${entry.id}`,
           title: entry.title,
           thumbnail: entry.thumbnail,
+          channel: contentInfo.uploaderName,
           format: entryFormat,
           qualityLabel: entryQualityLabel,
           audioOnly: entryIsAudio,
@@ -350,6 +813,7 @@ export function AnalyzeTab({ onAddToQueue }: AnalyzeTabProps) {
       url: `https://www.youtube.com/watch?v=${contentInfo.id}`,
       title: contentInfo.title,
       thumbnail: contentInfo.thumbnail,
+      channel: contentInfo.uploaderName,
       format: 'subtitle-only',
       qualityLabel: `SUB (${subFormat.toUpperCase()})`,
       audioOnly: false,
@@ -375,8 +839,13 @@ export function AnalyzeTab({ onAddToQueue }: AnalyzeTabProps) {
 
   return (
     <div className="analyze-container">
-      {/* URL Input Section */}
-      <section className="analyze-input-section">
+      {/* URL Input Section with Drag & Drop */}
+      <section
+        className={`analyze-input-section ${isDragOver ? 'drag-over' : ''}`}
+        onDragOver={handleDragOver}
+        onDragLeave={handleDragLeave}
+        onDrop={handleDrop}
+      >
         <div className="input-header">
           <span className="input-label">TARGET_URL</span>
           <span className="input-status">
@@ -388,12 +857,14 @@ export function AnalyzeTab({ onAddToQueue }: AnalyzeTabProps) {
           <div className="input-wrapper">
             <span className="input-prefix">{'>'}</span>
             <input
+              ref={inputRef}
               type="text"
               className="analyze-input"
-              placeholder="paste youtube url here..."
+              placeholder="search youtube or paste a url..."
               value={urlInput}
               onChange={(e) => setUrlInput(e.target.value)}
               onKeyDown={handleKeyDown}
+              onPaste={handlePaste}
               disabled={isDetecting}
               spellCheck={false}
             />
@@ -419,19 +890,344 @@ export function AnalyzeTab({ onAddToQueue }: AnalyzeTabProps) {
 
       {/* Main Content Area */}
       <div className="analyze-main">
-        {/* Left Panel - Content Preview */}
+        {/* Left Panel - Content Preview or Search Results */}
         <section className="analyze-preview">
-          {/* Empty State */}
-          {!contentInfo && !isDetecting && (
+          {/* Search Mode - Empty State (before search) */}
+          {inputMode === 'search' && !hasSearched && !isSearching && (
             <div className="preview-empty">
               <div className="empty-terminal">
-                <div className="terminal-line">{'>'} Initializing video analyzer...</div>
-                <div className="terminal-line">{'>'} Awaiting target URL<span className="blink">_</span></div>
+                <div className="terminal-line">{'>'} Search mode activated</div>
+                <div className="terminal-line">{'>'} Type what you're looking for<span className="blink">_</span></div>
+              </div>
+              <div className="empty-hint">
+                <span className="hint-key">SEARCH</span>
+                <span className="hint-text">for any video, playlist, or channel</span>
+              </div>
+            </div>
+          )}
+
+          {/* Search Mode - No Results */}
+          {inputMode === 'search' && hasSearched && !isSearching && searchResults.length === 0 && !searchError && (
+            <div className="preview-empty">
+              <div className="empty-terminal">
+                <div className="terminal-line">{'>'} Search completed</div>
+                <div className="terminal-line">{'>'} No results found<span className="blink">_</span></div>
+              </div>
+              <div className="empty-hint">
+                <span className="hint-key">TRY</span>
+                <span className="hint-text">a different search term</span>
+              </div>
+            </div>
+          )}
+
+          {/* Search Mode - Show Search Results */}
+          {inputMode === 'search' && hasSearched && !isSearching && searchResults.length > 0 && !contentInfo && (
+            <div className="search-results-container">
+              <div className="search-header">
+                <span className="search-title">SEARCH RESULTS</span>
+                <span className="search-count">{searchResults.length} found</span>
+              </div>
+              {searchError && (
+                <div className="search-error">
+                  <span className="error-icon">⚠</span>
+                  <span className="error-text">{searchError}</span>
+                </div>
+              )}
+              <div className="results-grid">
+                {searchResults.map((result, idx) => (
+                  <div
+                    key={result.id}
+                    className="search-result-card"
+                    style={{ animationDelay: `${idx * 0.05}s` }}
+                  >
+                    <div className="result-thumb">
+                      {result.thumbnail ? (
+                        <img src={result.thumbnail} alt="" />
+                      ) : (
+                        <div className="thumb-placeholder">▶</div>
+                      )}
+                      <span className="result-duration">{formatDuration(result.duration)}</span>
+                      {result.type !== 'video' && (
+                        <span className="result-type-badge">{result.type.toUpperCase()}</span>
+                      )}
+                    </div>
+                    <div className="result-info">
+                      <span className="result-title">{result.title}</span>
+                      <div className="result-meta">
+                        {result.uploader && (
+                          <span className="result-uploader">{result.uploader}</span>
+                        )}
+                        {result.viewCount && (
+                          <span className="result-views">{formatViewCount(result.viewCount)}</span>
+                        )}
+                      </div>
+                    </div>
+                    <button
+                      type="button"
+                      className="result-add-btn"
+                      onClick={() => handleAnalyzeSearchResult(result)}
+                    >
+                      <span>+</span>
+                      <span>{result.type === 'video' ? 'SELECT QUALITY' : 'ADD TO QUEUE'}</span>
+                    </button>
+                  </div>
+                ))}
+              </div>
+              {/* Load More Button */}
+              {hasMoreResults && searchResults.length > 0 && (
+                <div className="load-more-container">
+                  <button
+                    type="button"
+                    className="load-more-btn"
+                    onClick={handleLoadMore}
+                    disabled={isLoadingMore}
+                  >
+                    {isLoadingMore ? (
+                      <>
+                        <span className="loading-spinner small" />
+                        <span>LOADING...</span>
+                      </>
+                    ) : (
+                      <>
+                        <span>+</span>
+                        <span>LOAD MORE</span>
+                      </>
+                    )}
+                  </button>
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* Search Result Format Selection Modal */}
+          {analyzingSearchResult && (
+            <div className="format-selection-overlay">
+              <div className="format-selection-modal">
+                <div className="modal-header">
+                  <span className="modal-title">SELECT QUALITY</span>
+                  <button
+                    type="button"
+                    className="modal-close"
+                    onClick={handleCancelSearchFormatSelection}
+                  >
+                    ×
+                  </button>
+                </div>
+                <div className="modal-video-info">
+                  {analyzingSearchResult.thumbnail && (
+                    <img src={analyzingSearchResult.thumbnail} alt="" className="modal-thumb" />
+                  )}
+                  <div className="modal-video-details">
+                    <span className="modal-video-title">{analyzingSearchResult.title}</span>
+                    {analyzingSearchResult.uploader && (
+                      <span className="modal-video-uploader">{analyzingSearchResult.uploader}</span>
+                    )}
+                  </div>
+                </div>
+                {isLoadingSearchFormats ? (
+                  <div className="modal-loading">
+                    <div className="loading-spinner" />
+                    <span>Loading formats...</span>
+                  </div>
+                ) : (
+                  <div className="modal-format-list">
+                    {/* Video formats */}
+                    {searchResultFormats.filter(f => !f.isAudioOnly).length > 0 && (
+                      <div className="format-section">
+                        <span className="format-section-title">VIDEO</span>
+                        <div className="format-options">
+                          {searchResultFormats.filter(f => !f.isAudioOnly).map((format) => (
+                            <button
+                              key={format.formatId}
+                              type="button"
+                              className={`format-option ${selectedSearchFormat === format.formatId ? 'selected' : ''}`}
+                              onClick={() => setSelectedSearchFormat(format.formatId)}
+                            >
+                              <span className="format-quality">{format.quality}</span>
+                              <span className="format-meta">
+                                <span>{format.ext}</span>
+                                {format.filesize && <span>{formatFileSize(format.filesize)}</span>}
+                              </span>
+                            </button>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+                    {/* Audio formats */}
+                    {searchResultFormats.filter(f => f.isAudioOnly).length > 0 && (
+                      <div className="format-section">
+                        <span className="format-section-title">AUDIO ONLY</span>
+                        <div className="format-options">
+                          {searchResultFormats.filter(f => f.isAudioOnly).map((format) => (
+                            <button
+                              key={format.formatId}
+                              type="button"
+                              className={`format-option ${selectedSearchFormat === format.formatId ? 'selected' : ''}`}
+                              onClick={() => setSelectedSearchFormat(format.formatId)}
+                            >
+                              <span className="format-quality">{format.quality}</span>
+                              <span className="format-meta">
+                                <span>{format.ext}</span>
+                                {format.filesize && <span>{formatFileSize(format.filesize)}</span>}
+                              </span>
+                            </button>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+                    {/* Fallback if no formats loaded */}
+                    {searchResultFormats.length === 0 && !isLoadingSearchFormats && (
+                      <div className="format-section">
+                        <span className="format-section-title">QUALITY</span>
+                        <div className="format-options">
+                          <button
+                            type="button"
+                            className={`format-option ${selectedSearchFormat === 'bestvideo+bestaudio/best' ? 'selected' : ''}`}
+                            onClick={() => setSelectedSearchFormat('bestvideo+bestaudio/best')}
+                          >
+                            <span className="format-quality">Best Quality</span>
+                            <span className="format-meta">Auto</span>
+                          </button>
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                )}
+                <div className="modal-actions">
+                  <button
+                    type="button"
+                    className="modal-btn cancel"
+                    onClick={handleCancelSearchFormatSelection}
+                  >
+                    CANCEL
+                  </button>
+                  <button
+                    type="button"
+                    className="modal-btn confirm"
+                    onClick={handleConfirmSearchResultToQueue}
+                    disabled={isLoadingSearchFormats}
+                  >
+                    ADD TO QUEUE
+                  </button>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* Multi-URL Batch Preview Modal */}
+          {showMultiUrlModal && (
+            <div className="multi-url-overlay">
+              <div className="multi-url-modal">
+                <div className="multi-url-header">
+                  <span className="multi-url-title">BATCH URL DETECTED</span>
+                  <button
+                    type="button"
+                    className="multi-url-close"
+                    onClick={handleMultiUrlCancel}
+                    disabled={isAddingBatch}
+                  >
+                    x
+                  </button>
+                </div>
+                <div className="multi-url-summary">
+                  <span className="summary-text">
+                    Found <span className="summary-count">{detectedUrls.length}</span> URLs
+                    ({detectedUrls.filter(u => u.isValid).length} valid YouTube)
+                  </span>
+                  <div className="summary-actions">
+                    <button type="button" className="summary-btn" onClick={handleMultiUrlSelectAll}>
+                      SELECT ALL
+                    </button>
+                    <button type="button" className="summary-btn" onClick={handleMultiUrlDeselectAll}>
+                      DESELECT
+                    </button>
+                    <button type="button" className="summary-btn" onClick={handleMultiUrlSelectValid}>
+                      VALID ONLY
+                    </button>
+                  </div>
+                </div>
+                <div className="multi-url-list">
+                  {detectedUrls.map((item, idx) => (
+                    <div
+                      key={`${item.url}-${idx}`}
+                      className={`multi-url-item ${item.selected ? 'selected' : ''} ${!item.isValid ? 'invalid' : ''}`}
+                      onClick={() => handleMultiUrlToggle(idx)}
+                    >
+                      <div className={`item-checkbox ${item.selected ? 'checked' : ''}`}>
+                        {item.selected && <span>v</span>}
+                      </div>
+                      <span className={`item-type-badge ${item.type}`}>{item.type.toUpperCase()}</span>
+                      <div className="item-url-info">
+                        <span className="item-url">{item.url}</span>
+                        {item.id && <span className="item-id">ID: {item.id}</span>}
+                      </div>
+                      {!item.isValid && (
+                        <span className="item-invalid-label">NOT YOUTUBE</span>
+                      )}
+                    </div>
+                  ))}
+                </div>
+                <div className="multi-url-actions">
+                  <button
+                    type="button"
+                    className="multi-url-btn cancel"
+                    onClick={handleMultiUrlCancel}
+                    disabled={isAddingBatch}
+                  >
+                    CANCEL
+                  </button>
+                  <button
+                    type="button"
+                    className="multi-url-btn confirm"
+                    onClick={handleMultiUrlAddSelected}
+                    disabled={isAddingBatch || detectedUrls.filter(u => u.selected && u.isValid).length === 0}
+                  >
+                    {isAddingBatch ? (
+                      <>
+                        <span className="btn-spinner" />
+                        <span>ADDING...</span>
+                      </>
+                    ) : (
+                      <>
+                        <span>+</span>
+                        <span>ADD {detectedUrls.filter(u => u.selected && u.isValid).length} TO QUEUE</span>
+                      </>
+                    )}
+                  </button>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* Search Mode - Loading */}
+          {inputMode === 'search' && isSearching && (
+            <div className="preview-loading">
+              <div className="loading-grid">
+                {[...Array(9)].map((_, i) => (
+                  <div key={i} className="grid-cell" style={{ animationDelay: `${i * 0.1}s` }} />
+                ))}
+              </div>
+              <div className="loading-info">
+                <span className="loading-title">SEARCHING YOUTUBE</span>
+                <span className="loading-sub">Finding matching videos...</span>
+              </div>
+              <div className="loading-progress">
+                <div className="progress-bar" />
+              </div>
+            </div>
+          )}
+
+          {/* URL Mode - Empty State */}
+          {inputMode === 'url' && !contentInfo && !isDetecting && (
+            <div className="preview-empty">
+              <div className="empty-terminal">
+                <div className="terminal-line">{'>'} Initializing analyzer...</div>
+                <div className="terminal-line">{'>'} Enter a URL to analyze<span className="blink">_</span></div>
                 <div className="terminal-cursor" />
               </div>
               <div className="empty-hint">
                 <span className="hint-key">PASTE</span>
-                <span className="hint-text">a YouTube URL above to begin</span>
+                <span className="hint-text">a YouTube link to get available formats</span>
               </div>
             </div>
           )}
@@ -894,4 +1690,4 @@ export function AnalyzeTab({ onAddToQueue }: AnalyzeTabProps) {
       </div>
     </div>
   )
-}
+})

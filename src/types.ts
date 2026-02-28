@@ -10,6 +10,17 @@ export interface VideoFormat {
   isAudioOnly: boolean
 }
 
+export interface SearchResult {
+  id: string
+  title: string
+  thumbnail?: string
+  duration?: number
+  uploader?: string
+  viewCount?: number
+  url: string
+  type: 'video' | 'playlist' | 'channel'
+}
+
 export interface ContentInfo {
   type: 'video' | 'playlist' | 'channel'
   id: string
@@ -95,10 +106,11 @@ export interface QueueItem {
   url: string
   title: string
   thumbnail?: string
+  channel?: string // Channel/uploader name for analytics
   format: string
   qualityLabel?: string
   audioOnly: boolean
-  status: 'pending' | 'downloading' | 'completed' | 'failed' | 'cancelled' | 'paused'
+  status: 'pending' | 'downloading' | 'completed' | 'failed' | 'cancelled' | 'paused' | 'retrying'
   progress?: DownloadProgress
   addedAt: number
   source: 'app' | 'extension'
@@ -108,6 +120,10 @@ export interface QueueItem {
   subtitleDisplayNames?: string  // Human-readable names like "English, Spanish"
   batchGroupId?: string
   error?: string
+  retryCount?: number
+  nextRetryAt?: number
+  autoRetryEnabled?: boolean
+  priority?: number // 0 = normal (default), higher = more urgent. 1 = "Download Next"
 }
 
 export interface LogEntry {
@@ -141,7 +157,7 @@ export interface BatchStatus {
 }
 
 export interface CountdownInfo {
-  type: 'batch-pause' | 'download-delay' | 'none'
+  type: 'batch-pause' | 'download-delay' | 'retry-delay' | 'none'
   remaining: number
   total: number
   label: string
@@ -203,6 +219,21 @@ export interface UpdateState {
   changelogSeenForVersion: string
 }
 
+export interface ThemeColors {
+  name: string
+  displayName: string
+  colors: {
+    accent: string
+    accentHover: string
+    accentLight: string
+    success: string
+    warning: string
+    error: string
+  }
+}
+
+export type SoundNotificationMode = 'every' | 'each-item' | 'batch-complete'
+
 export interface AppSettings {
   downloadPath: string
   defaultQuality: string
@@ -213,6 +244,8 @@ export interface AppSettings {
   maxConcurrentDownloads: number
   delayBetweenDownloads: number
   theme: 'light' | 'dark' | 'system'
+  selectedTheme: string  // 'purple', 'ocean', 'forest', 'sunset', 'midnight', 'rose', 'cyan', 'emerald', 'custom'
+  customAccentColor: string  // Hex color for custom theme
   fontSize: 'small' | 'medium' | 'large' | 'x-large'
   batchSize: number
   batchPauseShort: number
@@ -221,6 +254,13 @@ export interface AppSettings {
   potTokenEnabled: boolean
   potTokenPort: number
   potTokenTTL: number
+  speedLimit: string  // e.g., '1M', '5M', '10M', or empty for unlimited
+  soundEnabled: boolean
+  soundVolume: number  // 0-100
+  soundNotificationMode: SoundNotificationMode  // 'every', 'each-item', 'batch-complete'
+  autoRetryEnabled: boolean
+  maxRetries: number
+  closeToTray: boolean  // Minimize to system tray instead of closing
 }
 
 export interface ElectronAPI {
@@ -228,7 +268,15 @@ export interface ElectronAPI {
   minimizeWindow: () => Promise<void>
   maximizeWindow: () => Promise<void>
   closeWindow: () => Promise<void>
+  minimizeToTray: () => Promise<void>
+  forceQuit: () => Promise<void>
   isMaximized: () => Promise<boolean>
+
+  // Mini mode
+  toggleMiniMode: () => Promise<boolean>
+  setAlwaysOnTop: (enabled: boolean) => Promise<void>
+  getMiniModeState: () => Promise<boolean>
+  onMiniModeChanged: (callback: (isMini: boolean) => void) => () => void
 
   detectUrl: (url: string) => Promise<ContentInfo>
   cancelDetection: () => Promise<void>
@@ -253,6 +301,7 @@ export interface ElectronAPI {
   clearHistory: () => Promise<void>
   removeFromHistory: (id: string) => Promise<void>
   onHistoryAdded: (callback: (item: HistoryItem) => void) => () => void
+  onBatchComplete: (callback: (info: { batchGroupId: string }) => void) => () => void
   openFile: (filePath: string) => Promise<void>
   openFolder: (filePath: string) => Promise<void>
   selectFolder: () => Promise<string | null>
@@ -263,6 +312,7 @@ export interface ElectronAPI {
     url: string
     title: string
     thumbnail?: string
+    channel?: string
     format: string
     qualityLabel?: string
     audioOnly: boolean
@@ -282,6 +332,9 @@ export interface ElectronAPI {
   clearQueue: () => Promise<void>
   retryQueueItem: (id: string) => Promise<boolean>
   retryAllFailed: () => Promise<number>
+  cancelRetry: (id: string) => Promise<boolean>
+  setQueueItemPriority: (id: string, priority: number) => Promise<boolean>
+  getQueueItemPriority: (id: string) => Promise<number | undefined>
   onQueueUpdate: (callback: (status: QueueStatus) => void) => () => void
 
   // Logger operations
@@ -335,6 +388,62 @@ export interface ElectronAPI {
   getPotTokenStatus: () => Promise<PotTokenStatus>
   restartPotTokenServer: () => Promise<void>
   onPotTokenStatus: (callback: (status: PotTokenStatus) => void) => () => void
+
+  // Search operations
+  searchYouTube: (query: string, maxResults?: number) => Promise<SearchResult[]>
+
+  // Queue Export/Import
+  exportQueue: () => Promise<{
+    canceled?: boolean
+    success?: boolean
+    path?: string
+    itemCount?: number
+  }>
+  importQueue: () => Promise<{
+    canceled?: boolean
+    success?: boolean
+    importedCount?: number
+    failedCount?: number
+    failedItems?: Array<{ title: string; error: string }>
+    mode?: 'merge' | 'replace'
+  }>
+
+  // Tray operations
+  isTraySupported: () => Promise<boolean>
+  clearTaskbarBadge: () => Promise<void>
+
+  // Analytics operations
+  getAnalytics: () => Promise<AnalyticsData>
+  getAnalyticsRange: (range: 'all' | 'today' | 'week' | 'month') => Promise<{
+    current: AnalyticsData
+    previous: AnalyticsData
+  }>
+  resetAnalytics: () => Promise<void>
+}
+
+export interface DailyStats {
+  date: string
+  downloads: number
+  bytes: number
+  successCount: number
+  failCount: number
+  bandwidthBytes: number
+}
+
+export interface AnalyticsData {
+  totalDownloads: number
+  totalBytes: number
+  totalBandwidth: number
+  timeSavedSeconds: number
+  successCount: number
+  failCount: number
+  avgSpeed: number
+  totalDownloadDuration: number
+  formatBreakdown: Record<string, number>
+  topChannels: Array<{ name: string; count: number }>
+  dailyStats: DailyStats[]
+  firstDownloadDate: string | null
+  lastUpdated: string
 }
 
 declare global {

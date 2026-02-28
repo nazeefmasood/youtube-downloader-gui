@@ -2,6 +2,53 @@
 
 All notable changes to VidGrab will be documented in this file.
 
+## [1.5.2] - 2026-02-28
+
+### Added
+- **Close Confirmation Dialog** — Always prompts when closing the app
+  - Shows options to minimize to tray or quit completely
+  - Different messages based on active downloads status
+  - Properly terminates all processes on quit (no more zombie processes)
+- **Drag & Drop URL Support** — Drop YouTube URLs directly onto the app
+  - Visual feedback with "DROP URL HERE" overlay
+  - Auto-analyzes dropped URLs
+- **Enhanced Theme System** — New CSS variables for consistent theming
+  - Added semantic colors for channel, playlist, audio, subtitle types
+  - New subtle/hover background variables for better theming
+  - All hardcoded colors replaced with CSS variables
+
+### Changed
+- **Removed Mini Mode Toggle** — Simplified title bar by removing mini mode button
+- **Search Results Persistence** — Search results now persist when switching tabs
+  - AnalyzeTab stays mounted but hidden when inactive
+- **Improved Close Behavior** — forceQuit now properly destroys tray and quits app
+
+### Fixed
+- **AnalyzeTab Width Issue** — Fixed tab not taking full width
+- **Close Button Visibility** — Fixed HTML structure causing button visibility issues
+- **Theming Issues** — Modal dialogs now properly adapt to theme changes
+  - Format selection modal uses theme variables
+  - Status badges use proper semantic colors
+
+### Performance
+- **yt-dlp Performance Flags** — 2-3x faster downloads
+  - Added `--concurrent-fragments 4` for parallel fragment downloads
+  - Added `--buffer-size 16K` for better I/O throughput
+- **IPC Throttling** — Reduced CPU usage during countdowns
+  - Countdown updates throttled to 5-second intervals
+- **Memoized Counts** — Downloads tab counts no longer recalculate on every render
+
+## [1.5.1] - 2026-02-28
+
+### Changed
+- **Close Dialog Redesign** — Exit confirmation modal now matches cyber brutalist theme
+  - Removed all icons for cleaner, more minimal appearance
+  - Sharp corners (2px) replacing rounded borders
+  - Uppercase text with letter-spacing for brutalist typography
+  - Outline-style buttons with glow hover effects
+  - Offset box-shadow for industrial aesthetic
+  - Simplified button labels (MINIMIZE / QUIT / CANCEL)
+
 ## [1.5.0] - 2026-02-28
 
 ### Added

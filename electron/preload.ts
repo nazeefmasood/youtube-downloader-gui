@@ -5,7 +5,19 @@ contextBridge.exposeInMainWorld('electronAPI', {
   minimizeWindow: () => ipcRenderer.invoke('window:minimize'),
   maximizeWindow: () => ipcRenderer.invoke('window:maximize'),
   closeWindow: () => ipcRenderer.invoke('window:close'),
+  minimizeToTray: () => ipcRenderer.invoke('window:minimizeToTray'),
+  forceQuit: () => ipcRenderer.invoke('window:forceQuit'),
   isMaximized: () => ipcRenderer.invoke('window:isMaximized'),
+
+  // Mini mode
+  toggleMiniMode: () => ipcRenderer.invoke('mini:toggle'),
+  setAlwaysOnTop: (enabled: boolean) => ipcRenderer.invoke('mini:setAlwaysOnTop', enabled),
+  getMiniModeState: () => ipcRenderer.invoke('mini:getState'),
+  onMiniModeChanged: (callback: (isMini: boolean) => void) => {
+    const subscription = (_event: Electron.IpcRendererEvent, isMini: boolean) => callback(isMini)
+    ipcRenderer.on('mini-mode:changed', subscription)
+    return () => ipcRenderer.removeListener('mini-mode:changed', subscription)
+  },
 
   // URL detection
   detectUrl: (url: string) => ipcRenderer.invoke('url:detect', url),
@@ -16,6 +28,10 @@ contextBridge.exposeInMainWorld('electronAPI', {
 
   // Subtitles
   getSubtitles: (url: string) => ipcRenderer.invoke('subtitles:get', url),
+
+  // Search
+  searchYouTube: (query: string, maxResults?: number) =>
+    ipcRenderer.invoke('search:youtube', query, maxResults),
 
   // Download
   startDownload: (options: {
@@ -106,6 +122,11 @@ contextBridge.exposeInMainWorld('electronAPI', {
     ipcRenderer.on('history:added', subscription)
     return () => ipcRenderer.removeListener('history:added', subscription)
   },
+  onBatchComplete: (callback: (info: { batchGroupId: string }) => void) => {
+    const subscription = (_event: Electron.IpcRendererEvent, info: Parameters<typeof callback>[0]) => callback(info)
+    ipcRenderer.on('batch:complete', subscription)
+    return () => ipcRenderer.removeListener('batch:complete', subscription)
+  },
 
   // File operations
   openFile: (filePath: string) => ipcRenderer.invoke('file:open', filePath),
@@ -118,6 +139,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
     url: string
     title: string
     thumbnail?: string
+    channel?: string
     format: string
     qualityLabel?: string
     audioOnly: boolean
@@ -143,15 +165,20 @@ contextBridge.exposeInMainWorld('electronAPI', {
   clearQueue: () => ipcRenderer.invoke('queue:clear'),
   retryQueueItem: (id: string) => ipcRenderer.invoke('queue:retry', id),
   retryAllFailed: () => ipcRenderer.invoke('queue:retryAllFailed'),
+  cancelRetry: (id: string) => ipcRenderer.invoke('queue:cancelRetry', id),
+  setQueueItemPriority: (id: string, priority: number) => ipcRenderer.invoke('queue:setPriority', id, priority),
+  getQueueItemPriority: (id: string) => ipcRenderer.invoke('queue:getPriority', id),
   onQueueUpdate: (callback: (status: {
     items: Array<{
       id: string
       url: string
       title: string
       thumbnail?: string
+      channel?: string
       format: string
+      qualityLabel?: string
       audioOnly: boolean
-      status: 'pending' | 'downloading' | 'completed' | 'failed' | 'cancelled' | 'paused'
+      status: 'pending' | 'downloading' | 'completed' | 'failed' | 'cancelled' | 'paused' | 'retrying'
       progress?: {
         percent: number
         speed?: string
@@ -160,11 +187,39 @@ contextBridge.exposeInMainWorld('electronAPI', {
       }
       addedAt: number
       source: 'app' | 'extension'
+      sourceType?: 'single' | 'playlist' | 'channel'
+      contentType?: 'video' | 'audio' | 'subtitle' | 'video+sub'
+      subtitleOptions?: { languages?: string[]; format?: string }
+      subtitleDisplayNames?: string
+      batchGroupId?: string
       error?: string
+      retryCount?: number
+      nextRetryAt?: number
+      autoRetryEnabled?: boolean
+      priority?: number
     }>
     isProcessing: boolean
     isPaused: boolean
     currentItemId: string | null
+    batchStatus?: {
+      active: boolean
+      groupId: string | null
+      batchNumber: number
+      totalBatches: number
+      itemsInCurrentBatch: number
+      batchSize: number
+      totalItems: number
+      completedItems: number
+      isPaused: boolean
+      pauseRemaining: number
+      pauseDuration: number
+    } | null
+    countdownInfo?: {
+      type: 'batch-pause' | 'download-delay' | 'retry-delay' | 'none'
+      remaining: number
+      total: number
+      label: string
+    } | null
   }) => void) => {
     const subscription = (_event: Electron.IpcRendererEvent, status: Parameters<typeof callback>[0]) => callback(status)
     ipcRenderer.on('queue:update', subscription)
@@ -297,4 +352,37 @@ contextBridge.exposeInMainWorld('electronAPI', {
     ipcRenderer.on('pot:status', subscription)
     return () => ipcRenderer.removeListener('pot:status', subscription)
   },
+
+  // Subscriptions (Watch Folder)
+  getSubscriptions: () => ipcRenderer.invoke('subscriptions:getAll'),
+  addSubscription: (url: string) => ipcRenderer.invoke('subscriptions:add', url),
+  removeSubscription: (id: string) => ipcRenderer.invoke('subscriptions:remove', id),
+  checkSubscriptions: () => ipcRenderer.invoke('subscriptions:checkNew'),
+  onNewVideos: (callback: (videos: Array<{
+    id: string
+    title: string
+    thumbnail?: string
+    duration?: number
+    url: string
+    subscriptionId: string
+    subscriptionName: string
+  }>) => void) => {
+    const subscription = (_event: Electron.IpcRendererEvent, videos: Parameters<typeof callback>[0]) => callback(videos)
+    ipcRenderer.on('subscriptions:newVideos', subscription)
+    return () => ipcRenderer.removeListener('subscriptions:newVideos', subscription)
+  },
+
+  // Queue Export/Import
+  exportQueue: () => ipcRenderer.invoke('queue:export'),
+  importQueue: () => ipcRenderer.invoke('queue:import'),
+
+  // Tray operations
+  isTraySupported: () => ipcRenderer.invoke('tray:supported'),
+  clearTaskbarBadge: () => ipcRenderer.invoke('tray:clearBadge'),
+
+  // Analytics operations
+  getAnalytics: () => ipcRenderer.invoke('analytics:get'),
+  getAnalyticsRange: (range: 'all' | 'today' | 'week' | 'month') =>
+    ipcRenderer.invoke('analytics:getRange', range),
+  resetAnalytics: () => ipcRenderer.invoke('analytics:reset'),
 })

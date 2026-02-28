@@ -18,10 +18,11 @@ export interface QueueItem {
   url: string
   title: string
   thumbnail?: string
+  channel?: string // Channel/uploader name for analytics
   format: string
   qualityLabel?: string
   audioOnly: boolean
-  status: 'pending' | 'downloading' | 'completed' | 'failed' | 'cancelled' | 'paused'
+  status: 'pending' | 'downloading' | 'completed' | 'failed' | 'cancelled' | 'paused' | 'retrying'
   progress?: DownloadProgress
   addedAt: number
   source: 'app' | 'extension'
@@ -31,6 +32,10 @@ export interface QueueItem {
   subtitleDisplayNames?: string
   batchGroupId?: string
   error?: string
+  retryCount?: number
+  nextRetryAt?: number
+  autoRetryEnabled?: boolean
+  priority?: number // 0 = normal (default), higher = more urgent. 1 = "Download Next"
 }
 
 export interface BatchStatus {
@@ -48,7 +53,7 @@ export interface BatchStatus {
 }
 
 export interface CountdownInfo {
-  type: 'batch-pause' | 'download-delay' | 'none'
+  type: 'batch-pause' | 'download-delay' | 'retry-delay' | 'none'
   remaining: number
   total: number
   label: string
@@ -82,7 +87,7 @@ export class QueueManager extends EventEmitter {
   private currentItemId: string | null = null
   private downloader: Downloader
   private downloadPath: string
-  private settings: { organizeByType?: boolean; delayBetweenDownloads?: number } = {}
+  private settings: { organizeByType?: boolean; delayBetweenDownloads?: number; speedLimit?: string } = {}
   private queueFilePath: string
   private saveTimeout: NodeJS.Timeout | null = null
   private readonly SAVE_DEBOUNCE_MS = 1000
@@ -92,6 +97,8 @@ export class QueueManager extends EventEmitter {
   private batchPauseTimer: NodeJS.Timeout | null = null
   private batchPauseEndTime: number = 0
   private countdownInterval: NodeJS.Timeout | null = null
+  private lastCountdownEmit: number = 0
+  private readonly COUNTDOWN_EMIT_INTERVAL = 5000 // Throttle countdown IPC to 5s
   private delayTimer: NodeJS.Timeout | null = null
   private countdownInfo: CountdownInfo | null = null
   private batchSettings = {
@@ -100,6 +107,22 @@ export class QueueManager extends EventEmitter {
     batchPauseLong: 10, // minutes, for >50 items
     batchDownloadEnabled: true,
   }
+
+  // Retry configuration
+  private retryConfig: {
+    maxRetries: number
+    baseDelay: number      // 5 seconds
+    maxDelay: number       // 1 minute
+    backoffMultiplier: number
+    autoRetryEnabled: boolean
+  } = {
+    maxRetries: 3,
+    baseDelay: 5000,
+    maxDelay: 60000,
+    backoffMultiplier: 2,
+    autoRetryEnabled: true,
+  }
+  private retryTimers: Map<string, NodeJS.Timeout> = new Map()
 
   constructor() {
     super()
@@ -117,9 +140,14 @@ export class QueueManager extends EventEmitter {
         this.items = (data.items || []).map((item: QueueItem) => ({
           ...item,
           // Reset downloading items to paused on restart (they were interrupted)
-          status: item.status === 'downloading' ? 'paused' : item.status,
+          status: item.status === 'downloading' ? 'paused' :
+                  // Reset retrying items to failed (user will need to manually retry)
+                  item.status === 'retrying' ? 'failed' :
+                  item.status,
           // Clear progress for interrupted downloads
           progress: item.status === 'downloading' ? undefined : item.progress,
+          // Clear nextRetryAt for retrying items
+          nextRetryAt: item.status === 'retrying' ? undefined : item.nextRetryAt,
         }))
         this.isPaused = data.isPaused || false
         logger.info('Queue loaded', `${this.items.length} items, paused: ${this.isPaused}`)
@@ -167,6 +195,9 @@ export class QueueManager extends EventEmitter {
     batchPauseShort?: number
     batchPauseLong?: number
     batchDownloadEnabled?: boolean
+    speedLimit?: string
+    maxRetries?: number
+    autoRetryEnabled?: boolean
   }): void {
     this.settings = settings
     const changed = (
@@ -179,10 +210,28 @@ export class QueueManager extends EventEmitter {
     if (settings.batchPauseShort !== undefined) this.batchSettings.batchPauseShort = settings.batchPauseShort
     if (settings.batchPauseLong !== undefined) this.batchSettings.batchPauseLong = settings.batchPauseLong
     if (settings.batchDownloadEnabled !== undefined) this.batchSettings.batchDownloadEnabled = settings.batchDownloadEnabled
+    if (settings.maxRetries !== undefined) this.retryConfig.maxRetries = settings.maxRetries
+    if (settings.autoRetryEnabled !== undefined) this.retryConfig.autoRetryEnabled = settings.autoRetryEnabled
     // Emit update so UI reflects the new batch calculations immediately
     if (changed) {
       this.emitUpdate()
     }
+  }
+
+  getMaxRetries(): number {
+    return this.retryConfig.maxRetries
+  }
+
+  setMaxRetries(maxRetries: number): void {
+    this.retryConfig.maxRetries = maxRetries
+  }
+
+  isAutoRetryEnabled(): boolean {
+    return this.retryConfig.autoRetryEnabled
+  }
+
+  setAutoRetryEnabled(enabled: boolean): void {
+    this.retryConfig.autoRetryEnabled = enabled
   }
 
   private setupDownloaderListeners(): void {
@@ -197,7 +246,7 @@ export class QueueManager extends EventEmitter {
       }
     })
 
-    this.downloader.on('complete', (result: { success: boolean; filePath?: string; error?: string }) => {
+    this.downloader.on('complete', (result: { success: boolean; filePath?: string; error?: string; channel?: string }) => {
       if (this.currentItemId) {
         const item = this.items.find(i => i.id === this.currentItemId)
         if (item) {
@@ -205,11 +254,23 @@ export class QueueManager extends EventEmitter {
             item.status = 'completed'
             logger.info('Download completed', item.title)
 
+            // Use channel from download result (extracted from video metadata) if available
+            // Fall back to the channel stored in queue item (from URL detection)
+            const effectiveChannel = result.channel || item.channel
+            if (result.channel && result.channel !== item.channel) {
+              logger.info('Updated channel from video metadata', `${item.channel || 'none'} -> ${result.channel}`)
+            }
+
             // Track batch completion
+            let batchCompleted = false
             if (item.batchGroupId) {
               const group = this.batchGroups.get(item.batchGroupId)
               if (group) {
                 group.completedItems++
+                // Check if entire batch is complete
+                if (group.completedItems >= group.totalItems) {
+                  batchCompleted = true
+                }
               }
             }
 
@@ -219,13 +280,24 @@ export class QueueManager extends EventEmitter {
               title: item.title,
               url: item.url,
               thumbnail: item.thumbnail,
+              channel: effectiveChannel,
               filePath: result.filePath,
               audioOnly: item.audioOnly,
+              batchGroupId: item.batchGroupId,
+              batchCompleted,
             })
           } else {
-            item.status = 'failed'
-            item.error = result.error
-            logger.error('Download failed', `${item.title}: ${result.error}`)
+            // Check if we should retry (check both global and per-item setting)
+            const currentRetryCount = item.retryCount || 0
+            const canRetry = currentRetryCount < this.retryConfig.maxRetries
+            const autoRetryEnabled = this.retryConfig.autoRetryEnabled && (item.autoRetryEnabled !== false)
+            if (canRetry && autoRetryEnabled) {
+              this.scheduleRetry(item)
+            } else {
+              item.status = 'failed'
+              item.error = result.error
+              logger.error('Download failed' + (!canRetry ? ' (max retries reached)' : autoRetryEnabled ? '' : ' (auto-retry disabled)'), `${item.title}: ${result.error}`)
+            }
           }
         }
 
@@ -269,14 +341,23 @@ export class QueueManager extends EventEmitter {
       if (this.currentItemId) {
         const item = this.items.find(i => i.id === this.currentItemId)
         if (item) {
-          item.status = 'failed'
-          item.error = error
-          this.emitUpdate()
+          // Check if we should retry (check both global and per-item setting)
+          const currentRetryCount = item.retryCount || 0
+          const canRetry = currentRetryCount < this.retryConfig.maxRetries
+          const autoRetryEnabled = this.retryConfig.autoRetryEnabled && (item.autoRetryEnabled !== false)
+          if (canRetry && autoRetryEnabled) {
+            this.scheduleRetry(item)
+          } else {
+            item.status = 'failed'
+            item.error = error
+            logger.error('Download error' + (!canRetry ? ' (max retries reached)' : autoRetryEnabled ? '' : ' (auto-retry disabled)'), `${item.title}: ${error}`)
+            this.emitUpdate()
+          }
         }
         this.currentItemId = null
         this.isProcessing = false
 
-        // Process next item
+        // Process next item (if this item is retrying, it won't be picked up as pending)
         setTimeout(() => {
           if (!this.isPaused) {
             this.processNext()
@@ -289,6 +370,15 @@ export class QueueManager extends EventEmitter {
   private emitUpdate(): void {
     this.debouncedSaveQueue()  // Persist with debounce to reduce disk I/O
     this.emit('update', this.getStatus())
+  }
+
+  // Throttled emit for countdown updates - reduces IPC flooding during pauses/delays
+  private emitCountdownUpdate(): void {
+    const now = Date.now()
+    if (now - this.lastCountdownEmit >= this.COUNTDOWN_EMIT_INTERVAL) {
+      this.lastCountdownEmit = now
+      this.emit('update', this.getStatus())
+    }
   }
 
   getStatus(): QueueStatus {
@@ -365,7 +455,7 @@ export class QueueManager extends EventEmitter {
     }
     this.emitUpdate()
 
-    // Start countdown interval (emits update every second)
+    // Start countdown interval (emits update every second, but IPC throttled to 5s)
     this.countdownInterval = setInterval(() => {
       const remaining = Math.max(0, this.batchPauseEndTime - Date.now())
       const mins = Math.floor(remaining / 60000)
@@ -376,7 +466,7 @@ export class QueueManager extends EventEmitter {
         total: pauseMs,
         label: `Batch pause: resuming in ${mins}:${String(secs).padStart(2, '0')}`,
       }
-      this.emitUpdate()
+      this.emitCountdownUpdate()  // Throttled to reduce IPC flooding
 
       if (remaining <= 0) {
         this.clearBatchTimers()
@@ -419,12 +509,12 @@ export class QueueManager extends EventEmitter {
         total: delayMs,
         label: `Next download in ${Math.ceil(remaining / 1000)}s`,
       }
-      this.emitUpdate()
+      this.emitCountdownUpdate()  // Throttled to reduce IPC flooding
 
       if (remaining <= 0) {
         this.clearCountdownInterval()
         this.countdownInfo = null
-        this.emitUpdate()
+        this.emitUpdate()  // Immediate update when countdown ends
       }
     }, 1000)
   }
@@ -500,6 +590,15 @@ export class QueueManager extends EventEmitter {
       this.isProcessing = false
     }
 
+    // Cancel retry timer if exists
+    if (item.status === 'retrying') {
+      const timer = this.retryTimers.get(id)
+      if (timer) {
+        clearTimeout(timer)
+        this.retryTimers.delete(id)
+      }
+    }
+
     this.items.splice(index, 1)
     this.emitUpdate()
 
@@ -529,6 +628,10 @@ export class QueueManager extends EventEmitter {
     } else if (item.status === 'pending') {
       item.status = 'cancelled'
       this.emitUpdate()
+    } else if (item.status === 'retrying') {
+      // Cancel the retry
+      this.cancelRetry(id)
+      item.status = 'cancelled'
     }
 
     return true
@@ -537,8 +640,26 @@ export class QueueManager extends EventEmitter {
   async processNext(): Promise<void> {
     if (this.isProcessing || this.isPaused) return
 
-    // Find next pending item (skip paused items)
-    const nextItem = this.items.find(i => i.status === 'pending')
+    // Find next pending item with priority sorting:
+    // 1. Higher priority first (priority > 0)
+    // 2. Items without priority (priority = 0 or undefined) come last
+    // 3. Same priority: maintain original order (addedAt)
+    const pendingItems = this.items.filter(i => i.status === 'pending')
+    if (pendingItems.length === 0) return
+
+    // Sort by priority (descending), then by addedAt (ascending) for stable ordering
+    pendingItems.sort((a, b) => {
+      const priorityA = a.priority ?? 0
+      const priorityB = b.priority ?? 0
+      // Higher priority first
+      if (priorityB !== priorityA) {
+        return priorityB - priorityA
+      }
+      // Same priority: maintain original order
+      return a.addedAt - b.addedAt
+    })
+
+    const nextItem = pendingItems[0]
     if (!nextItem) return
 
     this.isProcessing = true
@@ -565,6 +686,7 @@ export class QueueManager extends EventEmitter {
         organizeByType: this.settings.organizeByType ?? true,
         delayBetweenDownloads: this.settings.delayBetweenDownloads ?? 5000,  // Default 5s to avoid 429
         subtitleOptions: nextItem.subtitleOptions,
+        speedLimit: this.settings.speedLimit,
       })
     } catch (error) {
       const errorMsg = error instanceof Error ? error.message : String(error)
@@ -573,8 +695,16 @@ export class QueueManager extends EventEmitter {
       // CRITICAL: Reset queue state on error so queue doesn't get stuck
       const item = this.items.find(i => i.id === this.currentItemId)
       if (item && item.status === 'downloading') {
-        item.status = 'failed'
-        item.error = errorMsg
+        // Check if we should retry (check both global and per-item setting)
+        const currentRetryCount = item.retryCount || 0
+        const canRetry = currentRetryCount < this.retryConfig.maxRetries
+        const autoRetryEnabled = this.retryConfig.autoRetryEnabled && (item.autoRetryEnabled !== false)
+        if (canRetry && autoRetryEnabled) {
+          this.scheduleRetry(item)
+        } else {
+          item.status = 'failed'
+          item.error = errorMsg
+        }
       }
       this.currentItemId = null
       this.isProcessing = false
@@ -587,6 +717,105 @@ export class QueueManager extends EventEmitter {
         }
       }, 1000)
     }
+  }
+
+  private scheduleRetry(item: QueueItem): void {
+    const currentRetryCount = item.retryCount || 0
+    const nextRetryCount = currentRetryCount + 1
+
+    // Calculate exponential backoff delay
+    const delayMs = Math.min(
+      this.retryConfig.baseDelay * Math.pow(this.retryConfig.backoffMultiplier, currentRetryCount),
+      this.retryConfig.maxDelay
+    )
+
+    const retryAt = Date.now() + delayMs
+
+    logger.info('Scheduling retry', `${item.title} - Retry ${nextRetryCount}/${this.retryConfig.maxRetries} in ${Math.ceil(delayMs / 1000)}s`)
+
+    // Update item state
+    item.status = 'retrying'
+    item.retryCount = nextRetryCount
+    item.nextRetryAt = retryAt
+    item.progress = undefined
+
+    this.emitUpdate()
+
+    // Set up retry timer
+    const timerId = setTimeout(() => {
+      this.executeRetry(item.id)
+    }, delayMs)
+
+    this.retryTimers.set(item.id, timerId)
+
+    // Set up countdown interval for UI
+    const startTime = Date.now()
+    const countdownInterval = setInterval(() => {
+      const remaining = Math.max(0, retryAt - Date.now())
+      const seconds = Math.ceil(remaining / 1000)
+
+      this.countdownInfo = {
+        type: 'retry-delay',
+        remaining,
+        total: delayMs,
+        label: `Retrying ${item.title} in ${seconds}s (${nextRetryCount}/${this.retryConfig.maxRetries})`,
+      }
+      this.emitCountdownUpdate()  // Throttled to reduce IPC flooding
+
+      if (remaining <= 0) {
+        clearInterval(countdownInterval)
+        if (this.countdownInfo?.type === 'retry-delay') {
+          this.countdownInfo = null
+        }
+        this.emitUpdate()  // Immediate update when countdown ends
+      }
+    }, 1000)
+  }
+
+  private executeRetry(itemId: string): void {
+    const item = this.items.find(i => i.id === itemId)
+    if (!item) return
+
+    // Clear the timer
+    const timer = this.retryTimers.get(itemId)
+    if (timer) {
+      clearTimeout(timer)
+      this.retryTimers.delete(itemId)
+    }
+
+    // Reset to pending so it gets picked up by processNext
+    item.status = 'pending'
+    item.error = undefined
+    item.nextRetryAt = undefined
+
+    logger.info('Executing retry', `${item.title} - Attempt ${item.retryCount}/${this.retryConfig.maxRetries}`)
+    this.emitUpdate()
+
+    // Start processing if not already
+    if (!this.isProcessing && !this.isPaused) {
+      this.processNext()
+    }
+  }
+
+  cancelRetry(itemId: string): boolean {
+    const item = this.items.find(i => i.id === itemId)
+    if (!item || item.status !== 'retrying') return false
+
+    // Clear the retry timer
+    const timer = this.retryTimers.get(itemId)
+    if (timer) {
+      clearTimeout(timer)
+      this.retryTimers.delete(itemId)
+    }
+
+    // Mark as failed
+    item.status = 'failed'
+    item.nextRetryAt = undefined
+
+    logger.info('Retry cancelled', item.title)
+    this.emitUpdate()
+
+    return true
   }
 
   pause(): void {
@@ -632,6 +861,13 @@ export class QueueManager extends EventEmitter {
     this.clearDelayTimer()
     this.clearCountdownInterval()
     this.countdownInfo = null
+
+    // Clear all retry timers
+    for (const [id, timer] of this.retryTimers) {
+      clearTimeout(timer)
+    }
+    this.retryTimers.clear()
+
     // Cancel current download if any
     if (this.currentItemId) {
       this.downloader.cancel()
@@ -667,6 +903,12 @@ export class QueueManager extends EventEmitter {
     } else if (item.status === 'pending') {
       // Queued but not started - just mark as paused
       item.status = 'paused'
+      this.emitUpdate()
+    } else if (item.status === 'retrying') {
+      // Cancel the retry and pause
+      this.cancelRetry(id)
+      item.status = 'paused'
+      item.nextRetryAt = undefined
       this.emitUpdate()
     } else {
       return false
@@ -705,12 +947,21 @@ export class QueueManager extends EventEmitter {
       return false
     }
 
+    // Cancel any existing retry timer
+    const timer = this.retryTimers.get(id)
+    if (timer) {
+      clearTimeout(timer)
+      this.retryTimers.delete(id)
+    }
+
     logger.info('Retrying download', item.title)
 
-    // Reset item status
+    // Reset item status and retry count
     item.status = 'pending'
     item.error = undefined
     item.progress = undefined
+    item.retryCount = 0
+    item.nextRetryAt = undefined
 
     this.emitUpdate()
 
@@ -743,6 +994,70 @@ export class QueueManager extends EventEmitter {
     }
 
     return retriedCount
+  }
+
+  setItemAutoRetry(id: string, enabled: boolean): boolean {
+    const item = this.items.find(i => i.id === id)
+    if (!item) return false
+
+    item.autoRetryEnabled = enabled
+    this.emitUpdate()
+    logger.info('Item auto-retry changed', `${item.title}: ${enabled ? 'enabled' : 'disabled'}`)
+    return true
+  }
+
+  getItemAutoRetry(id: string): boolean | undefined {
+    const item = this.items.find(i => i.id === id)
+    return item?.autoRetryEnabled
+  }
+
+  setItemPriority(id: string, priority: number): boolean {
+    const item = this.items.find(i => i.id === id)
+    if (!item) {
+      console.log('[QueueManager] setItemPriority: Item not found:', id)
+      return false
+    }
+
+    // Can only set priority on pending or paused items
+    if (item.status !== 'pending' && item.status !== 'paused') {
+      console.log('[QueueManager] setItemPriority: Invalid status:', item.status)
+      return false
+    }
+
+    console.log('[QueueManager] setItemPriority: Setting priority', id, 'from', item.priority, 'to', priority)
+    item.priority = priority
+    logger.info('Item priority changed', `${item.title}: priority=${priority}`)
+
+    // Re-sort items so prioritized items appear first in the UI
+    // Sort: pending/paused items first (sorted by priority desc, then addedAt asc),
+    // then other items maintain their relative order
+    this.items.sort((a, b) => {
+      const aIsQueueable = a.status === 'pending' || a.status === 'paused'
+      const bIsQueueable = b.status === 'pending' || b.status === 'paused'
+
+      // Non-queueable items (downloading, completed, failed) stay in place relative to each other
+      if (!aIsQueueable && !bIsQueueable) return 0
+      // Queueable items come before non-queueable
+      if (aIsQueueable && !bIsQueueable) return -1
+      if (!aIsQueueable && bIsQueueable) return 1
+
+      // Both are queueable - sort by priority (higher first), then by addedAt (older first)
+      const priorityA = a.priority ?? 0
+      const priorityB = b.priority ?? 0
+      if (priorityB !== priorityA) {
+        return priorityB - priorityA
+      }
+      return a.addedAt - b.addedAt
+    })
+
+    this.emitUpdate()
+    console.log('[QueueManager] setItemPriority: Emitting update, new priority:', item.priority)
+    return true
+  }
+
+  getItemPriority(id: string): number | undefined {
+    const item = this.items.find(i => i.id === id)
+    return item?.priority
   }
 
   getDownloader(): Downloader {

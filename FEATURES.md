@@ -6,19 +6,19 @@
 
 ## High Priority Features
 
-- [ ] **Batch URL Paste** - Paste multiple URLs at once, auto-detect and add to queue
-- [ ] **Speed Limiter** - Throttle bandwidth per download or globally
-- [ ] **Watch Folder** - Auto-download new videos from subscribed channels
+- [x] **Batch URL Paste** - Paste multiple URLs at once, auto-detect and add to queue
+- [x] **Speed Limiter** - Throttle bandwidth per download or globally
+- [x] **Watch Folder** - Auto-download new videos from subscribed channels (checks on launch + every 2 hours)
 
 ---
 
 ## Quality of Life
 
-- [ ] **Keyboard Shortcuts** - Global hotkeys for common actions (add URL, pause all, settings)
-- [ ] **Drag & Drop URLs** - Drop URLs directly onto app window to add to queue
+- [x] **Keyboard Shortcuts** - Global hotkeys for common actions (add URL, pause all, settings)
+- [x] **Drag & Drop URLs** - Drop URLs directly onto app window to add to queue
 - [ ] **Search History** - Search through past downloads by title, channel, URL
 - [ ] **Export/Import Queue** - Save and restore download queues as JSON files
-- [ ] **Notification Sounds** - Audio feedback on download completion/failure
+- [x] **Notification Sounds** - Audio feedback on download completion/failure
 
 ---
 
@@ -34,8 +34,9 @@
 
 - [ ] **Mini Mode** - Compact always-on-top window for monitoring downloads
 - [ ] **System Tray** - Minimize to tray, continue downloads in background
-- [ ] **Dark/Light Theme Toggle** - Theme switcher in settings
+- [x] **Dark/Light Theme Toggle** - Theme switcher in settings (Ctrl+L)
 - [ ] **Custom Themes** - User-defined color schemes with preset options
+- [x] **Cyber Brutalist Close Dialog** - Exit confirmation modal redesigned to match app theme
 
 ---
 
@@ -117,8 +118,27 @@
 
 ---
 
-## Completed Features (v1.0 - v1.3)
+## Completed Features (v1.0 - v1.5)
 
+### v1.5.2
+- [x] Close Confirmation Dialog — Always prompts on close with minimize/quit options
+- [x] Drag & Drop URL Support — Drop YouTube URLs directly onto the app
+- [x] Search Results Persistence — Results stay when switching tabs
+- [x] Performance Optimizations — yt-dlp flags, IPC throttling, memoized counts
+- [x] Enhanced Theme System — Full CSS variable support for all UI elements
+- [x] Removed Mini Mode Toggle — Simplified title bar
+
+### v1.5.1
+- [x] Cyber Brutalist Close Dialog — Exit confirmation modal redesigned to match app theme
+
+### v1.5.0
+- [x] Batch Download System with configurable batch size
+- [x] Per-Video Quality Selection for playlists
+- [x] Playlist Visual Grouping in Downloads tab
+- [x] YouTube Search integration
+- [x] Changelog auto-display on updates
+
+### v1.0 - v1.4
 - [x] Core video download with yt-dlp
 - [x] Playlist support
 - [x] Channel support
@@ -130,40 +150,45 @@
 - [x] PO Token support for YouTube bot protection
 - [x] Dynamic rate-limit delays
 - [x] PO token status UI
+- [x] FFmpeg auto-download
+- [x] Binary status indicators
 
 ---
 
 ## Implementation Notes
 
-### Batch URL Paste
+### Batch URL Paste ✅ Implemented
 
 - Detect multiple URLs in clipboard (newline or comma separated)
-- Show preview modal before adding to queue
-- Support YouTube URLs only initially
+- Show preview modal with select/deselect functionality
+- Support YouTube videos, playlists, and channels
+- Batch add to queue with grouping
 
-### Speed Limiter
+### Speed Limiter ✅ Implemented
 
 - Use yt-dlp `--limit-rate` flag
-- Add global setting + per-download override
-- Presets: 1MB/s, 5MB/s, 10MB/s, Unlimited
+- Global setting in Settings panel
+- Presets: Unlimited, 1MB/s, 2MB/s, 5MB/s, 10MB/s, 20MB/s, 50MB/s
 
-### Watch Folder
+### Watch Folder ✅ Implemented
 
 - Store channel/playlist subscriptions in JSON
-- Background check on startup + interval (configurable)
-- Notify user of new videos available
-- Option to auto-add to queue or manual approve
+- Check on app launch (5 seconds after)
+- Periodic check every 2 hours
+- Notify user of new videos via IPC event
+- Backend ready for UI integration
 
-### Keyboard Shortcuts
+### Keyboard Shortcuts ✅ Implemented
 
 ```
-Ctrl+V        - Paste and analyze URL
-Ctrl+A        - Add to queue
-Space         - Pause/Resume selected
-Ctrl+P        - Pause all downloads
-Ctrl+S        - Settings
-Ctrl+H        - Toggle history
-Esc           - Clear selection
+Ctrl+O        - Open download folder
+Ctrl+N        - New download (reset)
+Ctrl+1        - Switch to Analyze view
+Ctrl+2        - Switch to Downloads view
+Ctrl+3        - Switch to History view
+Ctrl+4        - Switch to Settings view
+Ctrl+L        - Toggle theme (dark/light)
+Esc           - Close modal
 ```
 
 ### Mini Mode
@@ -175,7 +200,7 @@ Esc           - Clear selection
 
 ### System Tray
 
-- Icon with download indicator
+- Icon with download indicator, and progress and list of active downloads
 - Right-click menu: Pause all, Resume all, Open window, Quit
 - Notification on download complete
 
@@ -188,5 +213,5 @@ Esc           - Clear selection
 
 ---
 
-_Last updated: 2026-02-14_
-_Version: v1.3.0-beta_
+_Last updated: 2026-02-28_
+_Version: v1.5.2_
