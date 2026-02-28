@@ -202,6 +202,8 @@ interface DownloadOptions {
   delayBetweenDownloads?: number
   subtitleOptions?: SubtitleOptions
   speedLimit?: string  // e.g., '1M', '5M', '10M', or undefined for unlimited
+  writeThumbnail?: boolean  // Download video thumbnail
+  writeDescription?: boolean  // Save video description as text file
 }
 
 export class Downloader extends EventEmitter {
@@ -948,7 +950,7 @@ export class Downloader extends EventEmitter {
   }
 
   async download(options: DownloadOptions): Promise<void> {
-    const { url, title, format, audioOnly, outputPath, organizeByType, delayBetweenDownloads = 2000, subtitleOptions, speedLimit } = options
+    const { url, title, format, audioOnly, outputPath, organizeByType, delayBetweenDownloads = 2000, subtitleOptions, speedLimit, writeThumbnail, writeDescription } = options
     this.cancelled = false
 
     // Use provided title instead of re-detecting (avoids 403 errors and unnecessary API calls)
@@ -1051,6 +1053,18 @@ export class Downloader extends EventEmitter {
       }
       // Add extra sleep for subtitle downloads to avoid 429 errors
       args.push('--sleep-subtitles', '2')
+    }
+
+    // Thumbnail option
+    if (writeThumbnail) {
+      args.push('--write-thumbnail')
+      logger.info('Writing thumbnail')
+    }
+
+    // Description option
+    if (writeDescription) {
+      args.push('--write-description')
+      logger.info('Writing description')
     }
 
     // Speed limit (bandwidth throttling)

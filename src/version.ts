@@ -5,4 +5,4 @@
  * DO NOT EDIT MANUALLY - Edit version.json instead
  */
 
-export const APP_VERSION = "1.5.3";
+export const APP_VERSION = "1.6.1";

@@ -2,6 +2,23 @@
 
 All notable changes to VidGrab will be documented in this file.
 
+## [1.6.1] - 2026-03-01
+
+### Added
+- **Export Download History** — Export your download history as CSV, JSON, or Markdown
+  - Access from Settings → Data Management
+  - Includes title, URL, date, status, file path, size, and duration
+- **Shutdown After Complete** — Auto-shutdown computer when all downloads finish
+  - Enable in Settings → Extra Options
+  - Works on Windows, macOS, and Linux
+- **Save Thumbnails** — Download video thumbnail as image file alongside video
+- **Save Descriptions** — Save video description as text file alongside video
+
+### Fixed
+- **System Tray Quit** — "Quit VidGrab" from tray now properly terminates the app
+  - Fixed app staying running in background after selecting "Quit VidGrab" from tray
+  - Window is now destroyed before app.quit() to bypass close-to-tray prevention
+
 ## [1.6.0] - 2026-03-01
 
 ### Added

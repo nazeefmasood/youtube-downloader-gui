@@ -87,7 +87,7 @@ export class QueueManager extends EventEmitter {
   private currentItemId: string | null = null
   private downloader: Downloader
   private downloadPath: string
-  private settings: { organizeByType?: boolean; delayBetweenDownloads?: number; speedLimit?: string } = {}
+  private settings: { organizeByType?: boolean; delayBetweenDownloads?: number; speedLimit?: string; writeThumbnail?: boolean; writeDescription?: boolean } = {}
   private queueFilePath: string
   private saveTimeout: NodeJS.Timeout | null = null
   private readonly SAVE_DEBOUNCE_MS = 1000
@@ -198,6 +198,8 @@ export class QueueManager extends EventEmitter {
     speedLimit?: string
     maxRetries?: number
     autoRetryEnabled?: boolean
+    writeThumbnail?: boolean
+    writeDescription?: boolean
   }): void {
     this.settings = settings
     const changed = (
@@ -645,7 +647,14 @@ export class QueueManager extends EventEmitter {
     // 2. Items without priority (priority = 0 or undefined) come last
     // 3. Same priority: maintain original order (addedAt)
     const pendingItems = this.items.filter(i => i.status === 'pending')
-    if (pendingItems.length === 0) return
+    if (pendingItems.length === 0) {
+      // Queue is complete - emit event for shutdown-after-complete feature
+      const hasCompletedItems = this.items.some(i => i.status === 'completed')
+      if (hasCompletedItems) {
+        this.emit('queueComplete')
+      }
+      return
+    }
 
     // Sort by priority (descending), then by addedAt (ascending) for stable ordering
     pendingItems.sort((a, b) => {
@@ -687,6 +696,8 @@ export class QueueManager extends EventEmitter {
         delayBetweenDownloads: this.settings.delayBetweenDownloads ?? 5000,  // Default 5s to avoid 429
         subtitleOptions: nextItem.subtitleOptions,
         speedLimit: this.settings.speedLimit,
+        writeThumbnail: this.settings.writeThumbnail,
+        writeDescription: this.settings.writeDescription,
       })
     } catch (error) {
       const errorMsg = error instanceof Error ? error.message : String(error)

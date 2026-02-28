@@ -386,4 +386,11 @@ contextBridge.exposeInMainWorld('electronAPI', {
   getAnalyticsRange: (range: 'all' | 'today' | 'week' | 'month') =>
     ipcRenderer.invoke('analytics:getRange', range),
   resetAnalytics: () => ipcRenderer.invoke('analytics:reset'),
+
+  // Export operations
+  exportHistory: (format: 'csv' | 'json' | 'markdown') =>
+    ipcRenderer.invoke('history:export', format),
+
+  // System operations
+  shutdownSystem: () => ipcRenderer.invoke('system:shutdown'),
 })

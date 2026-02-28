@@ -1971,6 +1971,67 @@ function App() {
             </div>
 
             <div className="settings-group">
+              <div className="settings-group-title">EXTRA OPTIONS</div>
+
+              <div className="setting-item">
+                <div className="setting-info">
+                  <div className="setting-label">Shutdown After Complete</div>
+                  <div className="setting-description">
+                    Auto-shutdown computer when all downloads finish
+                  </div>
+                </div>
+                <button
+                  className={`toggle ${settings.shutdownAfterComplete ? "on" : ""}`}
+                  onClick={() =>
+                    updateSettings({
+                      shutdownAfterComplete: !settings.shutdownAfterComplete,
+                    })
+                  }
+                >
+                  <div className="toggle-knob" />
+                </button>
+              </div>
+
+              <div className="setting-item">
+                <div className="setting-info">
+                  <div className="setting-label">Save Thumbnails</div>
+                  <div className="setting-description">
+                    Download video thumbnail as image file
+                  </div>
+                </div>
+                <button
+                  className={`toggle ${settings.writeThumbnail ? "on" : ""}`}
+                  onClick={() =>
+                    updateSettings({
+                      writeThumbnail: !settings.writeThumbnail,
+                    })
+                  }
+                >
+                  <div className="toggle-knob" />
+                </button>
+              </div>
+
+              <div className="setting-item">
+                <div className="setting-info">
+                  <div className="setting-label">Save Descriptions</div>
+                  <div className="setting-description">
+                    Save video description as text file
+                  </div>
+                </div>
+                <button
+                  className={`toggle ${settings.writeDescription ? "on" : ""}`}
+                  onClick={() =>
+                    updateSettings({
+                      writeDescription: !settings.writeDescription,
+                    })
+                  }
+                >
+                  <div className="toggle-knob" />
+                </button>
+              </div>
+            </div>
+
+            <div className="settings-group">
               <div className="settings-group-title">BATCH DOWNLOADS</div>
 
               <div className="setting-item">
@@ -2392,6 +2453,57 @@ function App() {
                     disabled={settings.soundEnabled === false}
                   >
                     ERROR
+                  </button>
+                </div>
+              </div>
+            </div>
+
+            <div className="settings-group">
+              <div className="settings-group-title">DATA MANAGEMENT</div>
+
+              <div className="setting-item">
+                <div className="setting-info">
+                  <div className="setting-label">Export Download History</div>
+                  <div className="setting-description">
+                    Export your download history as CSV, JSON, or Markdown
+                  </div>
+                </div>
+                <div className="export-actions">
+                  <button
+                    className="btn-secondary"
+                    onClick={async () => {
+                      const result = await window.electronAPI.exportHistory('csv')
+                      if (result.success) {
+                        setShowSuccess(true)
+                        setTimeout(() => setShowSuccess(false), 2000)
+                      }
+                    }}
+                  >
+                    CSV
+                  </button>
+                  <button
+                    className="btn-secondary"
+                    onClick={async () => {
+                      const result = await window.electronAPI.exportHistory('json')
+                      if (result.success) {
+                        setShowSuccess(true)
+                        setTimeout(() => setShowSuccess(false), 2000)
+                      }
+                    }}
+                  >
+                    JSON
+                  </button>
+                  <button
+                    className="btn-secondary"
+                    onClick={async () => {
+                      const result = await window.electronAPI.exportHistory('markdown')
+                      if (result.success) {
+                        setShowSuccess(true)
+                        setTimeout(() => setShowSuccess(false), 2000)
+                      }
+                    }}
+                  >
+                    MARKDOWN
                   </button>
                 </div>
               </div>

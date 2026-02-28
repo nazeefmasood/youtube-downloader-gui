@@ -60,13 +60,13 @@
 
 ### 🔄 Sync & Backup
 
-- [ ] **Export Download List** - Export as CSV/JSON/Markdown
+- [x] **Export Download List** - Export as CSV/JSON/Markdown
 
 ### ⏰ Scheduling
 
 - [ ] **Download at Specific Time** - Schedule single download
 - [ ] **Wake Computer** - Wake from sleep to download
-- [ ] **Shutdown After Complete** - Auto-shutdown when queue done
+- [x] **Shutdown After Complete** - Auto-shutdown when queue done
 
 ### 🌐 Multi-Platform
 
@@ -80,8 +80,8 @@
 
 ### 👨‍💻 Creator Tools
 
-- [ ] **Thumbnail Grabber** - Download all video thumbnails
-- [ ] **Description Saver** - Save video descriptions as text files
+- [x] **Thumbnail Grabber** - Download all video thumbnails
+- [x] **Description Saver** - Save video descriptions as text files
 - [ ] **Comment Downloader** - Export comments to JSON
 - [ ] **Caption Export** - Export all subtitle languages
 
@@ -110,7 +110,21 @@
 
 ---
 
-## Completed Features (v1.0 - v1.5)
+## Completed Features (v1.0 - v1.6)
+
+### v1.6.1
+
+- [x] System Tray Quit Fix — "Quit VidGrab" from tray now properly terminates the app
+
+### v1.6.0
+
+- [x] Enhanced System Tray — Rich tray menu with download status, progress, queue stats
+- [x] Duplicate Detection — Warn when downloading already-downloaded videos
+- [x] Multi-Platform Support — Download from 200+ platforms (Twitch, TikTok, Twitter/X, Instagram, Reddit, Vimeo, etc.)
+- [x] Export Download History — Export as CSV, JSON, or Markdown
+- [x] Shutdown After Complete — Auto-shutdown computer when queue finishes
+- [x] Save Thumbnails — Download video thumbnails as image files
+- [x] Save Descriptions — Save video descriptions as text files
 
 ### v1.5.3
 

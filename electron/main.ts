@@ -236,6 +236,16 @@ function createWindow() {
   // Setup analytics handlers
   setupAnalyticsHandlers(queueManager)
 
+  // Listen for queue complete event for shutdown-after-complete feature
+  queueManager.on('queueComplete', () => {
+    const settings = store.get('settings') as { shutdownAfterComplete?: boolean }
+    if (settings?.shutdownAfterComplete) {
+      logger.info('Queue complete, initiating system shutdown')
+      // Perform shutdown directly
+      performShutdown()
+    }
+  })
+
   // Initialize tray manager
   trayManager = new TrayManager(queueManager)
   trayManager.setMainWindow(mainWindow)
@@ -646,6 +656,9 @@ ipcMain.handle('settings:get', () => {
     closeToTray: true,  // Minimize to system tray instead of closing
     autoRetryEnabled: true,
     maxRetries: 3,
+    shutdownAfterComplete: false,  // Auto-shutdown when queue done
+    writeThumbnail: false,  // Download video thumbnail
+    writeDescription: false,  // Save video description as text file
   }
   return { ...defaults, ...store.get('settings') }
 })
@@ -1452,4 +1465,125 @@ ipcMain.handle('history:checkDuplicate', (_event, url: string) => {
   }
 
   return { isDuplicate: false, videoId }
+})
+
+// Export download history
+ipcMain.handle('history:export', async (_event, format: 'csv' | 'json' | 'markdown') => {
+  const { dialog } = require('electron')
+  const history = store.get('history') as Array<{
+    id: string
+    title: string
+    url: string
+    thumbnail?: string
+    downloadDate: string
+    filePath: string
+    fileSize?: number
+    duration?: number
+    status: string
+    type: string
+    videoCount?: number
+  }>
+
+  if (history.length === 0) {
+    return { canceled: true, success: false, count: 0 }
+  }
+
+  // Determine file extension and filters
+  const ext = format === 'markdown' ? 'md' : format
+  const filters = [{ name: format.toUpperCase(), extensions: [ext] }]
+
+  const result = await dialog.showSaveDialog(mainWindow!, {
+    title: 'Export Download History',
+    defaultPath: `vidgrab-history-${new Date().toISOString().split('T')[0]}.${ext}`,
+    filters,
+  })
+
+  if (result.canceled || !result.filePath) {
+    return { canceled: true, success: false }
+  }
+
+  let content = ''
+
+  if (format === 'json') {
+    content = JSON.stringify(history, null, 2)
+  } else if (format === 'csv') {
+    // CSV header
+    const headers = ['Title', 'URL', 'Date', 'Status', 'Type', 'File Path', 'File Size', 'Duration']
+    const rows = history.map(item => [
+      `"${(item.title || '').replace(/"/g, '""')}"`,
+      item.url || '',
+      item.downloadDate || '',
+      item.status || '',
+      item.type || '',
+      `"${(item.filePath || '').replace(/"/g, '""')}"`,
+      item.fileSize?.toString() || '',
+      item.duration?.toString() || '',
+    ])
+    content = [headers.join(','), ...rows.map(r => r.join(','))].join('\n')
+  } else if (format === 'markdown') {
+    content = '# VidGrab Download History\n\n'
+    content += `*Exported on ${new Date().toLocaleString()}*\n\n`
+    content += `Total downloads: ${history.length}\n\n---\n\n`
+
+    for (const item of history) {
+      content += `## ${item.title || 'Untitled'}\n\n`
+      content += `- **URL:** ${item.url || 'N/A'}\n`
+      content += `- **Date:** ${item.downloadDate || 'N/A'}\n`
+      content += `- **Status:** ${item.status || 'N/A'}\n`
+      content += `- **Type:** ${item.type || 'N/A'}\n`
+      if (item.fileSize) {
+        const mb = (item.fileSize / 1024 / 1024).toFixed(2)
+        content += `- **Size:** ${mb} MB\n`
+      }
+      if (item.duration) {
+        const mins = Math.floor(item.duration / 60)
+        const secs = Math.floor(item.duration % 60)
+        content += `- **Duration:** ${mins}:${secs.toString().padStart(2, '0')}\n`
+      }
+      content += '\n'
+    }
+  }
+
+  try {
+    fs.writeFileSync(result.filePath, content, 'utf-8')
+    logger.info('History exported', `${history.length} items to ${result.filePath}`)
+    return { canceled: false, success: true, path: result.filePath, count: history.length }
+  } catch (err) {
+    logger.error('Failed to export history', err instanceof Error ? err.message : String(err))
+    return { canceled: false, success: false, count: 0 }
+  }
+})
+
+// System shutdown function
+function performShutdown() {
+  logger.info('System shutdown requested after queue completion')
+
+  // Force quit without close-to-tray prevention
+  if (trayManager) {
+    trayManager.destroy()
+  }
+
+  // Give a moment for logging
+  setTimeout(() => {
+    const platform = process.platform
+
+    if (platform === 'win32') {
+      // Windows: shutdown with 1 second delay
+      require('child_process').exec('shutdown /s /t 1')
+    } else if (platform === 'darwin') {
+      // macOS: shutdown
+      require('child_process').exec('sudo shutdown -h now')
+    } else {
+      // Linux: shutdown
+      require('child_process').exec('shutdown -h now')
+    }
+
+    // Also quit the app
+    app.quit()
+  }, 500)
+}
+
+// System shutdown
+ipcMain.handle('system:shutdown', async () => {
+  performShutdown()
 })

@@ -263,6 +263,9 @@ export interface AppSettings {
   autoRetryEnabled: boolean
   maxRetries: number
   closeToTray: boolean  // Minimize to system tray instead of closing
+  shutdownAfterComplete: boolean  // Auto-shutdown when queue done
+  writeThumbnail: boolean  // Download video thumbnail
+  writeDescription: boolean  // Save video description as text file
 }
 
 export interface ElectronAPI {
@@ -422,6 +425,17 @@ export interface ElectronAPI {
     previous: AnalyticsData
   }>
   resetAnalytics: () => Promise<void>
+
+  // Export operations
+  exportHistory: (format: 'csv' | 'json' | 'markdown') => Promise<{
+    canceled?: boolean
+    success?: boolean
+    path?: string
+    count?: number
+  }>
+
+  // System operations
+  shutdownSystem: () => Promise<void>
 }
 
 export interface DailyStats {

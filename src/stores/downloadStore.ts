@@ -91,6 +91,9 @@ const defaultSettings: AppSettings = {
   autoRetryEnabled: true,
   maxRetries: 3,
   closeToTray: true,
+  shutdownAfterComplete: false,
+  writeThumbnail: false,
+  writeDescription: false,
 }
 
 export const useDownloadStore = create<DownloadState>((set, get) => ({
