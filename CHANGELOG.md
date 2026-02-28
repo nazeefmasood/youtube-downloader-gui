@@ -2,6 +2,22 @@
 
 All notable changes to VidGrab will be documented in this file.
 
+## [1.5.3] - 2026-02-28
+
+### Security
+- **Extension Authentication** — Secure token-based authentication for browser extension
+  - Random 64-character API token generated on app startup
+  - Extension fetches token via `/api/token` endpoint (localhost only)
+  - All API endpoints require Bearer token authentication
+  - Automatic token refresh on 401 responses
+  - Token stored securely in chrome.storage.local
+- **Tightened CORS Policy** — Restricted to chrome-extension:// origins only
+  - Replaced wildcard `*` with explicit chrome-extension origin
+  - Added Authorization header to allowed headers
+
+### Changed
+- **Extension Version Bump** — Updated to v1.5.3 to match app version
+
 ## [1.5.2] - 2026-02-28
 
 ### Added

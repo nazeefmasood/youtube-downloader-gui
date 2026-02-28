@@ -1,5 +1,83 @@
 const API_BASE = 'http://127.0.0.1:3847';
 
+// Get stored API token
+async function getStoredToken() {
+  const result = await chrome.storage.local.get('apiToken');
+  return result.apiToken || null;
+}
+
+// Store API token
+async function storeToken(token) {
+  await chrome.storage.local.set({ apiToken: token });
+}
+
+// Clear stored token
+async function clearToken() {
+  await chrome.storage.local.remove('apiToken');
+}
+
+// Fetch and store a new token from the app
+async function fetchToken() {
+  try {
+    const response = await fetch(`${API_BASE}/api/token`, {
+      method: 'GET',
+      headers: { 'Content-Type': 'application/json' },
+    });
+    if (response.ok) {
+      const data = await response.json();
+      if (data.token) {
+        await storeToken(data.token);
+        return data.token;
+      }
+    }
+    return null;
+  } catch (error) {
+    console.error('Failed to fetch token:', error);
+    return null;
+  }
+}
+
+// Make authenticated API request
+async function authFetch(endpoint, options = {}) {
+  let token = await getStoredToken();
+
+  // If no token, try to fetch one
+  if (!token) {
+    token = await fetchToken();
+  }
+
+  // Add authorization header
+  const headers = {
+    'Content-Type': 'application/json',
+    ...(options.headers || {}),
+  };
+
+  if (token) {
+    headers['Authorization'] = `Bearer ${token}`;
+  }
+
+  const response = await fetch(`${API_BASE}${endpoint}`, {
+    ...options,
+    headers,
+  });
+
+  // If unauthorized, clear token and retry once
+  if (response.status === 401) {
+    await clearToken();
+    token = await fetchToken();
+
+    if (token) {
+      headers['Authorization'] = `Bearer ${token}`;
+      return fetch(`${API_BASE}${endpoint}`, {
+        ...options,
+        headers,
+      });
+    }
+  }
+
+  return response;
+}
+
 // Check if VidGrab app is running
 async function checkAppStatus() {
   try {
@@ -19,9 +97,8 @@ async function checkAppStatus() {
 // Get available formats for a URL
 async function getFormats(url) {
   try {
-    const response = await fetch(`${API_BASE}/api/formats`, {
+    const response = await authFetch('/api/formats', {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ url }),
     });
     if (response.ok) {
@@ -37,9 +114,8 @@ async function getFormats(url) {
 // Add download to queue
 async function addToQueue(data) {
   try {
-    const response = await fetch(`${API_BASE}/api/download`, {
+    const response = await authFetch('/api/download', {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(data),
     });
     if (response.ok) {
@@ -55,9 +131,8 @@ async function addToQueue(data) {
 // Get queue status
 async function getQueueStatus() {
   try {
-    const response = await fetch(`${API_BASE}/api/queue`, {
+    const response = await authFetch('/api/queue', {
       method: 'GET',
-      headers: { 'Content-Type': 'application/json' },
     });
     if (response.ok) {
       return await response.json();
@@ -84,6 +159,10 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
           break;
         case 'GET_QUEUE':
           sendResponse(await getQueueStatus());
+          break;
+        case 'CLEAR_TOKEN':
+          await clearToken();
+          sendResponse({ success: true });
           break;
         default:
           sendResponse({ error: 'Unknown message type' });

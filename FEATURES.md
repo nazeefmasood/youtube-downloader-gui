@@ -120,6 +120,10 @@
 
 ## Completed Features (v1.0 - v1.5)
 
+### v1.5.3
+- [x] Extension Authentication — Secure token-based API authentication
+- [x] Tightened CORS Policy — Restricted to chrome-extension origins only
+
 ### v1.5.2
 - [x] Close Confirmation Dialog — Always prompts on close with minimize/quit options
 - [x] Drag & Drop URL Support — Drop YouTube URLs directly onto the app
@@ -214,4 +218,4 @@ Esc           - Close modal
 ---
 
 _Last updated: 2026-02-28_
-_Version: v1.5.2_
+_Version: v1.5.3_

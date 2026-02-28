@@ -1,13 +1,37 @@
 import * as http from 'http'
+import * as crypto from 'crypto'
 import { QueueManager } from './queueManager'
 
 const PORT = 3847
 const HOST = '127.0.0.1'
 
+// Authentication token - generated on server start
+let apiToken: string
+
 // Rate limiting
 const rateLimitMap = new Map<string, { count: number; resetTime: number }>()
 const RATE_LIMIT_WINDOW = 60000 // 1 minute
 const RATE_LIMIT_MAX_REQUESTS = 60
+
+// Generate a secure random token
+function generateApiToken(): string {
+  return crypto.randomBytes(32).toString('hex')
+}
+
+// Get the current API token (for external access)
+export function getApiToken(): string {
+  return apiToken
+}
+
+// Validate Bearer token from Authorization header
+function validateAuthToken(req: http.IncomingMessage): boolean {
+  const authHeader = req.headers.authorization
+  if (!authHeader || !authHeader.startsWith('Bearer ')) {
+    return false
+  }
+  const token = authHeader.slice(7)
+  return token === apiToken
+}
 
 // Cleanup rate limit map periodically to prevent memory leak
 function cleanupRateLimitMap(): void {
@@ -75,9 +99,9 @@ function parseBody(req: http.IncomingMessage): Promise<Record<string, unknown>> 
 function sendJson(res: http.ServerResponse, data: unknown, statusCode = 200): void {
   res.writeHead(statusCode, {
     'Content-Type': 'application/json',
-    'Access-Control-Allow-Origin': '*',
+    'Access-Control-Allow-Origin': 'chrome-extension://*',
     'Access-Control-Allow-Methods': 'GET, POST, OPTIONS',
-    'Access-Control-Allow-Headers': 'Content-Type',
+    'Access-Control-Allow-Headers': 'Content-Type, Authorization',
   })
   res.end(JSON.stringify(data))
 }
@@ -87,6 +111,10 @@ function sendError(res: http.ServerResponse, message: string, statusCode = 400):
 }
 
 export function createHttpServer(queueManager: QueueManager): http.Server {
+  // Generate new API token on server creation
+  apiToken = generateApiToken()
+  console.log('[HTTP] Generated new API token for extension authentication')
+
   // Use shared downloader instance from queue manager to avoid creating multiple instances
   const downloader = queueManager.getDownloader()
 
@@ -102,9 +130,9 @@ export function createHttpServer(queueManager: QueueManager): http.Server {
     // Handle CORS preflight
     if (req.method === 'OPTIONS') {
       res.writeHead(204, {
-        'Access-Control-Allow-Origin': '*',
+        'Access-Control-Allow-Origin': 'chrome-extension://*',
         'Access-Control-Allow-Methods': 'GET, POST, OPTIONS',
-        'Access-Control-Allow-Headers': 'Content-Type',
+        'Access-Control-Allow-Headers': 'Content-Type, Authorization',
         'Access-Control-Max-Age': '86400',
       })
       res.end()
@@ -120,7 +148,7 @@ export function createHttpServer(queueManager: QueueManager): http.Server {
     const url = req.url || '/'
 
     try {
-      // GET /api/status - Check if app is running
+      // GET /api/status - Check if app is running (no auth required)
       if (req.method === 'GET' && url === '/api/status') {
         const status = queueManager.getStatus()
         sendJson(res, {
@@ -129,6 +157,19 @@ export function createHttpServer(queueManager: QueueManager): http.Server {
           isProcessing: status.isProcessing,
           isPaused: status.isPaused,
         })
+        return
+      }
+
+      // GET /api/token - Get authentication token (localhost only, no auth required)
+      // This allows the extension to authenticate on first use
+      if (req.method === 'GET' && url === '/api/token') {
+        sendJson(res, { token: apiToken })
+        return
+      }
+
+      // All endpoints below require authentication
+      if (!validateAuthToken(req)) {
+        sendError(res, 'Unauthorized - Invalid or missing API token', 401)
         return
       }
 
