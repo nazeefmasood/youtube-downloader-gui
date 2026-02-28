@@ -2,6 +2,18 @@
 
 All notable changes to VidGrab will be documented in this file.
 
+## [1.6.2] - 2026-03-01
+
+### Added
+- **Storage Predictor** — Estimate total download size for playlists/channels
+  - Shows in sidebar when analyzing playlists
+  - Calculates based on selected quality format
+  - Adjusts dynamically based on video selection mode
+- **Smart Filenames** — Clean up video filenames automatically
+  - Removes emojis and special characters
+  - Restricts to ASCII characters for compatibility
+  - Enabled by default, can be toggled in Settings → Extra Options
+
 ## [1.6.1] - 2026-03-01
 
 ### Added

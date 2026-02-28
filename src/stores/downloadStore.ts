@@ -94,6 +94,7 @@ const defaultSettings: AppSettings = {
   shutdownAfterComplete: false,
   writeThumbnail: false,
   writeDescription: false,
+  smartFilename: true,
 }
 
 export const useDownloadStore = create<DownloadState>((set, get) => ({

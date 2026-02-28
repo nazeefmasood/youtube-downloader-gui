@@ -54,8 +54,8 @@
   - Single video: Shows confirmation modal
   - Playlist/Channel: Auto-skips duplicates, shows summary
 - [ ] **Broken Link Checker** - Check if saved URLs are still valid
-- [ ] **Storage Predictor** - Estimate required space before downloading playlist
-- [ ] **Smart Filename** - Auto-rename based on rules (remove emojis, fix encoding)
+- [x] **Storage Predictor** - Estimate required space before downloading playlist
+- [x] **Smart Filename** - Auto-rename based on rules (remove emojis, fix encoding)
 - [x] **Auto Folder by Channel or playlist** - Create folder per channel name
 
 ### 🔄 Sync & Backup
@@ -111,6 +111,11 @@
 ---
 
 ## Completed Features (v1.0 - v1.6)
+
+### v1.6.2
+
+- [x] Storage Predictor — Estimate playlist size before downloading
+- [x] Smart Filenames — Clean up filenames (remove emojis, special characters)
 
 ### v1.6.1
 
@@ -229,4 +234,4 @@ Esc           - Close modal
 ---
 
 _Last updated: 2026-03-01_
-_Version: v1.6.0_
+_Version: v1.6.2_

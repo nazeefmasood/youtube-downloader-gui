@@ -87,7 +87,7 @@ export class QueueManager extends EventEmitter {
   private currentItemId: string | null = null
   private downloader: Downloader
   private downloadPath: string
-  private settings: { organizeByType?: boolean; delayBetweenDownloads?: number; speedLimit?: string; writeThumbnail?: boolean; writeDescription?: boolean } = {}
+  private settings: { organizeByType?: boolean; delayBetweenDownloads?: number; speedLimit?: string; writeThumbnail?: boolean; writeDescription?: boolean; smartFilename?: boolean } = {}
   private queueFilePath: string
   private saveTimeout: NodeJS.Timeout | null = null
   private readonly SAVE_DEBOUNCE_MS = 1000
@@ -200,6 +200,7 @@ export class QueueManager extends EventEmitter {
     autoRetryEnabled?: boolean
     writeThumbnail?: boolean
     writeDescription?: boolean
+    smartFilename?: boolean
   }): void {
     this.settings = settings
     const changed = (
@@ -698,6 +699,7 @@ export class QueueManager extends EventEmitter {
         speedLimit: this.settings.speedLimit,
         writeThumbnail: this.settings.writeThumbnail,
         writeDescription: this.settings.writeDescription,
+        smartFilename: this.settings.smartFilename,
       })
     } catch (error) {
       const errorMsg = error instanceof Error ? error.message : String(error)

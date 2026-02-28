@@ -266,6 +266,7 @@ export interface AppSettings {
   shutdownAfterComplete: boolean  // Auto-shutdown when queue done
   writeThumbnail: boolean  // Download video thumbnail
   writeDescription: boolean  // Save video description as text file
+  smartFilename: boolean  // Clean up filenames (remove emojis, restrict to ASCII)
 }
 
 export interface ElectronAPI {

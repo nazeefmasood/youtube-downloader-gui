@@ -659,6 +659,7 @@ ipcMain.handle('settings:get', () => {
     shutdownAfterComplete: false,  // Auto-shutdown when queue done
     writeThumbnail: false,  // Download video thumbnail
     writeDescription: false,  // Save video description as text file
+    smartFilename: true,  // Clean up filenames (remove emojis, restrict to ASCII)
   }
   return { ...defaults, ...store.get('settings') }
 })

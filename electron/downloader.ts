@@ -204,6 +204,7 @@ interface DownloadOptions {
   speedLimit?: string  // e.g., '1M', '5M', '10M', or undefined for unlimited
   writeThumbnail?: boolean  // Download video thumbnail
   writeDescription?: boolean  // Save video description as text file
+  smartFilename?: boolean  // Clean up filenames (remove emojis, restrict to ASCII)
 }
 
 export class Downloader extends EventEmitter {
@@ -950,7 +951,7 @@ export class Downloader extends EventEmitter {
   }
 
   async download(options: DownloadOptions): Promise<void> {
-    const { url, title, format, audioOnly, outputPath, organizeByType, delayBetweenDownloads = 2000, subtitleOptions, speedLimit, writeThumbnail, writeDescription } = options
+    const { url, title, format, audioOnly, outputPath, organizeByType, delayBetweenDownloads = 2000, subtitleOptions, speedLimit, writeThumbnail, writeDescription, smartFilename } = options
     this.cancelled = false
 
     // Use provided title instead of re-detecting (avoids 403 errors and unnecessary API calls)
@@ -1065,6 +1066,12 @@ export class Downloader extends EventEmitter {
     if (writeDescription) {
       args.push('--write-description')
       logger.info('Writing description')
+    }
+
+    // Smart filename option (clean up filenames)
+    if (smartFilename !== false) {  // Default to true
+      args.push('--restrict-filenames')  // Restrict filenames to only ASCII characters
+      args.push('--no-continue')  // Don't resume partially downloaded files
     }
 
     // Speed limit (bandwidth throttling)

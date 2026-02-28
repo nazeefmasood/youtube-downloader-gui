@@ -2029,6 +2029,25 @@ function App() {
                   <div className="toggle-knob" />
                 </button>
               </div>
+
+              <div className="setting-item">
+                <div className="setting-info">
+                  <div className="setting-label">Smart Filenames</div>
+                  <div className="setting-description">
+                    Clean up filenames (remove emojis, special characters)
+                  </div>
+                </div>
+                <button
+                  className={`toggle ${settings.smartFilename !== false ? "on" : ""}`}
+                  onClick={() =>
+                    updateSettings({
+                      smartFilename: settings.smartFilename === false ? true : false,
+                    })
+                  }
+                >
+                  <div className="toggle-knob" />
+                </button>
+              </div>
             </div>
 
             <div className="settings-group">

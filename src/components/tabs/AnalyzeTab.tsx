@@ -1873,6 +1873,51 @@ export const AnalyzeTab = forwardRef<AnalyzeTabRef, AnalyzeTabProps>(function An
               )}
             </div>
 
+            {/* Storage Prediction for Playlists */}
+            {contentInfo.type !== 'video' && contentInfo.entries && contentInfo.entries.length > 0 && (
+              <div className="options-section">
+                <div className="section-header">
+                  <span className="section-title">STORAGE PREDICTION</span>
+                </div>
+                <div className="storage-prediction">
+                  {(() => {
+                    const selectedFormatInfo = formats.find(f => f.formatId === selectedFormat)
+                    const estimatedSizePerVideo = selectedFormatInfo?.filesize || 0
+                    const videosToDownload = getVideosToDownload()
+                    const totalEstimatedSize = estimatedSizePerVideo * videosToDownload.length
+
+                    return (
+                      <>
+                        <div className="prediction-row">
+                          <span className="prediction-label">Videos</span>
+                          <span className="prediction-value">{videosToDownload.length}</span>
+                        </div>
+                        {estimatedSizePerVideo > 0 && (
+                          <div className="prediction-row">
+                            <span className="prediction-label">Size per video</span>
+                            <span className="prediction-value">{formatFileSize(estimatedSizePerVideo)}</span>
+                          </div>
+                        )}
+                        <div className="prediction-row total">
+                          <span className="prediction-label">Estimated Total</span>
+                          <span className="prediction-value">
+                            {totalEstimatedSize > 0
+                              ? formatFileSize(totalEstimatedSize)
+                              : 'Unknown (select quality)'}
+                          </span>
+                        </div>
+                        {totalEstimatedSize > 0 && (
+                          <div className="prediction-note">
+                            ⚠️ Estimate based on first video's format size
+                          </div>
+                        )}
+                      </>
+                    )
+                  })()}
+                </div>
+              </div>
+            )}
+
             {/* Action Button */}
             <div className="options-action">
               <button
