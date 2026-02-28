@@ -37,7 +37,12 @@ jobs:
           cache: 'npm'
 
       - name: Install dependencies
-        run: npm ci
+        run: |
+          for i in 1 2 3; do
+            npm ci && break
+            echo "Retry $i/3 after 10s..."
+            sleep 10
+          done
 
       - name: Build application
         run: npm run ${{ matrix.build_cmd }} -- --publish never
