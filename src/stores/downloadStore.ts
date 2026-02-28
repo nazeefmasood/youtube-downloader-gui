@@ -95,6 +95,7 @@ const defaultSettings: AppSettings = {
   writeThumbnail: false,
   writeDescription: false,
   smartFilename: true,
+  downloadAllSubtitles: false,
 }
 
 export const useDownloadStore = create<DownloadState>((set, get) => ({

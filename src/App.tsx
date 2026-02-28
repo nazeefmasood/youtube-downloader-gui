@@ -2048,6 +2048,25 @@ function App() {
                   <div className="toggle-knob" />
                 </button>
               </div>
+
+              <div className="setting-item">
+                <div className="setting-info">
+                  <div className="setting-label">Download All Subtitles</div>
+                  <div className="setting-description">
+                    Download all available subtitle languages automatically
+                  </div>
+                </div>
+                <button
+                  className={`toggle ${settings.downloadAllSubtitles ? "on" : ""}`}
+                  onClick={() =>
+                    updateSettings({
+                      downloadAllSubtitles: !settings.downloadAllSubtitles,
+                    })
+                  }
+                >
+                  <div className="toggle-knob" />
+                </button>
+              </div>
             </div>
 
             <div className="settings-group">

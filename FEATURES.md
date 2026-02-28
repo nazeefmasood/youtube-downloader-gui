@@ -82,8 +82,7 @@
 
 - [x] **Thumbnail Grabber** - Download all video thumbnails
 - [x] **Description Saver** - Save video descriptions as text files
-- [ ] **Comment Downloader** - Export comments to JSON
-- [ ] **Caption Export** - Export all subtitle languages
+- [x] **Caption Export** - Export all subtitle languages (via "Download All Subtitles" setting)
 
 ### 🔋 Power & Battery
 
@@ -92,11 +91,6 @@
 - [ ] **UPS Detection** - Pause if on battery backup
 - [ ] **Laptop Lid Close Action** - Configure behavior
 
-### 🔗 Integrations
-
-- [ ] **Discord Bot** - Control via Discord
-- [ ] **Email Reports** - Daily/weekly email summaries
-
 ### 🧪 Experimental
 
 - [ ] **8K Support** - Ultra-high quality downloads
@@ -104,13 +98,13 @@
 - [ ] **Spatial Audio** - Download with spatial/ambisonics
 - [ ] **AV1 Codec** - Next-gen codec support
 
-### 📱 Mobile Features
-
-- [ ] **Android App** - Native Android app
-
 ---
 
 ## Completed Features (v1.0 - v1.6)
+
+### v1.6.3
+
+- [x] Download All Subtitles — One-click download all available subtitle languages
 
 ### v1.6.2
 

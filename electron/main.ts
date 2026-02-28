@@ -660,6 +660,7 @@ ipcMain.handle('settings:get', () => {
     writeThumbnail: false,  // Download video thumbnail
     writeDescription: false,  // Save video description as text file
     smartFilename: true,  // Clean up filenames (remove emojis, restrict to ASCII)
+    downloadAllSubtitles: false,  // Download all available subtitle languages
   }
   return { ...defaults, ...store.get('settings') }
 })

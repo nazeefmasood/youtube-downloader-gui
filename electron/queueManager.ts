@@ -87,7 +87,7 @@ export class QueueManager extends EventEmitter {
   private currentItemId: string | null = null
   private downloader: Downloader
   private downloadPath: string
-  private settings: { organizeByType?: boolean; delayBetweenDownloads?: number; speedLimit?: string; writeThumbnail?: boolean; writeDescription?: boolean; smartFilename?: boolean } = {}
+  private settings: { organizeByType?: boolean; delayBetweenDownloads?: number; speedLimit?: string; writeThumbnail?: boolean; writeDescription?: boolean; smartFilename?: boolean; downloadAllSubtitles?: boolean } = {}
   private queueFilePath: string
   private saveTimeout: NodeJS.Timeout | null = null
   private readonly SAVE_DEBOUNCE_MS = 1000
@@ -201,7 +201,9 @@ export class QueueManager extends EventEmitter {
     writeThumbnail?: boolean
     writeDescription?: boolean
     smartFilename?: boolean
+    downloadAllSubtitles?: boolean
   }): void {
+    this.settings = settings
     this.settings = settings
     const changed = (
       (settings.batchSize !== undefined && settings.batchSize !== this.batchSettings.batchSize) ||
@@ -700,6 +702,7 @@ export class QueueManager extends EventEmitter {
         writeThumbnail: this.settings.writeThumbnail,
         writeDescription: this.settings.writeDescription,
         smartFilename: this.settings.smartFilename,
+        downloadAllSubtitles: this.settings.downloadAllSubtitles,
       })
     } catch (error) {
       const errorMsg = error instanceof Error ? error.message : String(error)

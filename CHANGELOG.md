@@ -2,6 +2,14 @@
 
 All notable changes to VidGrab will be documented in this file.
 
+## [1.6.3] - 2026-03-01
+
+### Added
+- **Download All Subtitles** — Download all available subtitle languages automatically
+  - Enable in Settings → Extra Options
+  - Uses yt-dlp `--sub-langs all` flag
+  - Great for videos with multiple language subtitles
+
 ## [1.6.2] - 2026-03-01
 
 ### Added

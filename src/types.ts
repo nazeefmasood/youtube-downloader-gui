@@ -267,6 +267,7 @@ export interface AppSettings {
   writeThumbnail: boolean  // Download video thumbnail
   writeDescription: boolean  // Save video description as text file
   smartFilename: boolean  // Clean up filenames (remove emojis, restrict to ASCII)
+  downloadAllSubtitles: boolean  // Download all available subtitle languages
 }
 
 export interface ElectronAPI {
