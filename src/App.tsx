@@ -2067,6 +2067,63 @@ function App() {
                   <div className="toggle-knob" />
                 </button>
               </div>
+
+              <div className="setting-item">
+                <div className="setting-info">
+                  <div className="setting-label">Prefer AV1 Codec</div>
+                  <div className="setting-description">
+                    Use AV1 codec for better compression (slower encoding)
+                  </div>
+                </div>
+                <button
+                  className={`toggle ${settings.preferAV1 ? "on" : ""}`}
+                  onClick={() =>
+                    updateSettings({
+                      preferAV1: !settings.preferAV1,
+                    })
+                  }
+                >
+                  <div className="toggle-knob" />
+                </button>
+              </div>
+
+              <div className="setting-item">
+                <div className="setting-info">
+                  <div className="setting-label">Preserve HDR</div>
+                  <div className="setting-description">
+                    Keep HDR metadata for HDR displays
+                  </div>
+                </div>
+                <button
+                  className={`toggle ${settings.preferHDR ? "on" : ""}`}
+                  onClick={() =>
+                    updateSettings({
+                      preferHDR: !settings.preferHDR,
+                    })
+                  }
+                >
+                  <div className="toggle-knob" />
+                </button>
+              </div>
+
+              <div className="setting-item">
+                <div className="setting-info">
+                  <div className="setting-label">Download Comments</div>
+                  <div className="setting-description">
+                    Save video comments as JSON file
+                  </div>
+                </div>
+                <button
+                  className={`toggle ${settings.downloadAllComments ? "on" : ""}`}
+                  onClick={() =>
+                    updateSettings({
+                      downloadAllComments: !settings.downloadAllComments,
+                    })
+                  }
+                >
+                  <div className="toggle-knob" />
+                </button>
+              </div>
             </div>
 
             <div className="settings-group">

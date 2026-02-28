@@ -206,6 +206,9 @@ interface DownloadOptions {
   writeDescription?: boolean  // Save video description as text file
   smartFilename?: boolean  // Clean up filenames (remove emojis, restrict to ASCII)
   downloadAllSubtitles?: boolean  // Download all available subtitle languages
+  preferAV1?: boolean  // Prefer AV1 codec for better compression
+  preferHDR?: boolean  // Preserve HDR metadata when available
+  downloadAllComments?: boolean  // Download video comments as JSON
 }
 
 export class Downloader extends EventEmitter {
@@ -952,7 +955,7 @@ export class Downloader extends EventEmitter {
   }
 
   async download(options: DownloadOptions): Promise<void> {
-    const { url, title, format, audioOnly, outputPath, organizeByType, delayBetweenDownloads = 2000, subtitleOptions, speedLimit, writeThumbnail, writeDescription, smartFilename, downloadAllSubtitles } = options
+    const { url, title, format, audioOnly, outputPath, organizeByType, delayBetweenDownloads = 2000, subtitleOptions, speedLimit, writeThumbnail, writeDescription, smartFilename, downloadAllSubtitles, preferAV1, preferHDR, downloadAllComments } = options
     this.cancelled = false
 
     // Use provided title instead of re-detecting (avoids 403 errors and unnecessary API calls)
@@ -1080,6 +1083,26 @@ export class Downloader extends EventEmitter {
     if (smartFilename !== false) {  // Default to true
       args.push('--restrict-filenames')  // Restrict filenames to only ASCII characters
       args.push('--no-continue')  // Don't resume partially downloaded files
+    }
+
+    // Prefer AV1 codec for better compression
+    if (preferAV1) {
+      args.push('--merge-output-format', 'mp4')
+      args.push('--postprocessor-args', 'ffmpeg:-c:v', 'libaom-av1')
+      logger.info('Preferring AV1 codec')
+    }
+
+    // Preserve HDR metadata
+    if (preferHDR) {
+      args.push('--keep-video')
+      logger.info('Preserving HDR metadata')
+    }
+
+    // Download comments as JSON
+    if (downloadAllComments) {
+      args.push('--write-comments')
+      args.push('--comments-format', 'json')
+      logger.info('Downloading comments as JSON')
     }
 
     // Speed limit (bandwidth throttling)

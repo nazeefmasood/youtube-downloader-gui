@@ -268,6 +268,9 @@ export interface AppSettings {
   writeDescription: boolean  // Save video description as text file
   smartFilename: boolean  // Clean up filenames (remove emojis, restrict to ASCII)
   downloadAllSubtitles: boolean  // Download all available subtitle languages
+  preferAV1: boolean  // Prefer AV1 codec for better compression
+  preferHDR: boolean  // Preserve HDR metadata when available
+  downloadAllComments: boolean  // Download video comments as JSON
 }
 
 export interface ElectronAPI {

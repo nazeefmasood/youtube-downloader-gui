@@ -661,6 +661,9 @@ ipcMain.handle('settings:get', () => {
     writeDescription: false,  // Save video description as text file
     smartFilename: true,  // Clean up filenames (remove emojis, restrict to ASCII)
     downloadAllSubtitles: false,  // Download all available subtitle languages
+    preferAV1: false,  // Prefer AV1 codec for better compression
+    preferHDR: false,  // Preserve HDR metadata when available
+    downloadAllComments: false,  // Download video comments as JSON
   }
   return { ...defaults, ...store.get('settings') }
 })

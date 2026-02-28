@@ -9,6 +9,15 @@ All notable changes to VidGrab will be documented in this file.
   - Enable in Settings → Extra Options
   - Uses yt-dlp `--sub-langs all` flag
   - Great for videos with multiple language subtitles
+- **Prefer AV1 Codec** — Use AV1 codec for better compression and quality
+  - AV1 offers ~30% better compression than VP9 at same quality
+  - Enable in Settings → Extra Options
+- **Preserve HDR** — Keep HDR metadata when available
+  - Downloads HDR versions when available (YouTube HDR, etc.)
+  - Enable in Settings → Extra Options
+- **Download Comments** — Save video comments as JSON file
+  - Comments saved alongside video file
+  - Enable in Settings → Extra Options
 
 ## [1.6.2] - 2026-03-01
 

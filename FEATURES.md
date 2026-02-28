@@ -94,9 +94,9 @@
 ### 🧪 Experimental
 
 - [ ] **8K Support** - Ultra-high quality downloads
-- [ ] **HDR Preservation** - Keep HDR metadata
+- [x] **HDR Preservation** - Keep HDR metadata
 - [ ] **Spatial Audio** - Download with spatial/ambisonics
-- [ ] **AV1 Codec** - Next-gen codec support
+- [x] **AV1 Codec** - Next-gen codec support
 
 ---
 
@@ -105,6 +105,9 @@
 ### v1.6.3
 
 - [x] Download All Subtitles — One-click download all available subtitle languages
+- [x] Prefer AV1 Codec — Use AV1 codec for better compression
+- [x] Preserve HDR — Keep HDR metadata when available
+- [x] Download Comments — Save video comments as JSON file
 
 ### v1.6.2
 
@@ -228,4 +231,4 @@ Esc           - Close modal
 ---
 
 _Last updated: 2026-03-01_
-_Version: v1.6.2_
+_Version: v1.6.3_

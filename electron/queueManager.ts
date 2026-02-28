@@ -87,7 +87,7 @@ export class QueueManager extends EventEmitter {
   private currentItemId: string | null = null
   private downloader: Downloader
   private downloadPath: string
-  private settings: { organizeByType?: boolean; delayBetweenDownloads?: number; speedLimit?: string; writeThumbnail?: boolean; writeDescription?: boolean; smartFilename?: boolean; downloadAllSubtitles?: boolean } = {}
+  private settings: { organizeByType?: boolean; delayBetweenDownloads?: number; speedLimit?: string; writeThumbnail?: boolean; writeDescription?: boolean; smartFilename?: boolean; downloadAllSubtitles?: boolean; preferAV1?: boolean; preferHDR?: boolean; downloadAllComments?: boolean } = {}
   private queueFilePath: string
   private saveTimeout: NodeJS.Timeout | null = null
   private readonly SAVE_DEBOUNCE_MS = 1000
@@ -202,6 +202,9 @@ export class QueueManager extends EventEmitter {
     writeDescription?: boolean
     smartFilename?: boolean
     downloadAllSubtitles?: boolean
+    preferAV1?: boolean
+    preferHDR?: boolean
+    downloadAllComments?: boolean
   }): void {
     this.settings = settings
     this.settings = settings
@@ -703,6 +706,9 @@ export class QueueManager extends EventEmitter {
         writeDescription: this.settings.writeDescription,
         smartFilename: this.settings.smartFilename,
         downloadAllSubtitles: this.settings.downloadAllSubtitles,
+        preferAV1: this.settings.preferAV1,
+        preferHDR: this.settings.preferHDR,
+        downloadAllComments: this.settings.downloadAllComments,
       })
     } catch (error) {
       const errorMsg = error instanceof Error ? error.message : String(error)
