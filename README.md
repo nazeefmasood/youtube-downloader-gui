@@ -1,18 +1,22 @@
-# VidGrab
+# Grab
 
-A fast and beautiful YouTube video downloader with a modern UI. Download videos, playlists, and entire channels with ease.
+A fast and beautiful universal media downloader with a modern UI. Download videos, audio, playlists, and channels from 1000+ platforms including YouTube, TikTok, Twitch, Twitter/X, Instagram, Reddit, Vimeo, Facebook, and many more.
 
 ## Features
 
+- **1000+ Platforms**: Download from YouTube, TikTok, Twitch, Twitter/X, Instagram, Reddit, Vimeo, Facebook, and more
 - **One-Click Downloads**: Paste URL and download instantly
-- **Quality Selection**: Choose from 360p to 4K resolution
+- **Quality Selection**: Choose from 360p to 4K resolution with AV1/HDR support
 - **Audio Extraction**: Download audio-only in MP3 or M4A format
-- **Playlist Support**: Download entire playlists with proper naming
-- **Channel Downloads**: Grab all videos from a channel
+- **Subtitle Downloads**: Download subtitles in all available languages
+- **Playlist & Channel Support**: Download entire playlists and channels with proper naming
+- **Batch Processing**: Download multiple items with configurable delays and batching
+- **Cloud Sync**: Sync your download queue across devices with Grab Cloud
+- **Browser Extension**: Send downloads directly from your browser
 - **Progress Tracking**: Real-time progress with speed and ETA
 - **Smart Organization**: Auto-organize downloads by type
-- **Download History**: Track all your downloads
-- **Custom UI**: Modern IDM-style interface with custom window controls
+- **Download History**: Track all your downloads with export options
+- **Custom UI**: Modern cyber-brutalist interface with custom window controls
 
 ## Screenshots
 
@@ -30,7 +34,7 @@ The app features a sleek dark theme with:
 - **Vite** - Fast build tool
 - **Tailwind CSS** - Styling
 - **Zustand** - State management
-- **yt-dlp** - YouTube download engine
+- **yt-dlp** - Download engine (supports 1000+ sites)
 - **ffmpeg** - Video/audio processing
 
 ## Getting Started
@@ -82,7 +86,7 @@ npm run build:linux  # Linux
 ## Project Structure
 
 ```
-vidgrab/
+grab/
 ├── electron/           # Electron main process
 │   ├── main.ts        # Main entry point
 │   ├── preload.ts     # IPC bridge
@@ -100,7 +104,7 @@ vidgrab/
 
 Downloads are automatically organized:
 ```
-~/Downloads/Youtube Downloads/
+~/Downloads/Grab/
 ├── [Single videos]
 ├── Playlists/
 │   └── [Playlist Name]/

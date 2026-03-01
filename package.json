@@ -1,7 +1,7 @@
 {
   "name": "grab",
   "version": "1.7.0",
-  "description": "Universal video downloader supporting 1000+ platforms including YouTube, TikTok, Twitch, Twitter, Instagram, Reddit, Vimeo, and Facebook. Features AV1/HDR video quality, subtitle downloads, batch processing, playlist/channel support, queue management with priority controls, auto-retry, cloud sync, browser extension integration, and comprehensive analytics. Built with Electron and powered by yt-dlp for maximum compatibility.",
+  "description": "Universal media downloader supporting 1000+ platforms including YouTube, TikTok, Twitch, Twitter/X, Instagram, Reddit, Vimeo, and Facebook. Download videos, audio, playlists, and channels with AV1/HDR support, subtitles, batch processing, cloud sync, and browser extension integration. Built with Electron and powered by yt-dlp for maximum compatibility.",
   "main": "dist-electron/main.js",
   "scripts": {
     "dev": "vite",
@@ -125,8 +125,8 @@
       ],
       "icon": "resources/icon.png",
       "category": "AudioVideo",
-      "synopsis": "Video Downloader",
-      "description": "Fast & beautiful video downloader - Download videos, playlists, and channels with ease. Powered by yt-dlp."
+      "synopsis": "Media Downloader",
+      "description": "Universal media downloader supporting 1000+ platforms. Download videos, audio, playlists, and channels with ease. Powered by yt-dlp."
     },
     "deb": {
       "depends": [
