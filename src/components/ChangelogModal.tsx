@@ -142,7 +142,7 @@ export function ChangelogModal({ visible, onClose }: ChangelogModalProps) {
         {/* Footer */}
         <div className="changelog-brutal-footer">
           <div className="footer-left">
-            <span className="footer-label">VIDGRAB</span>
+            <span className="footer-label">GRAB</span>
             <span className="footer-sep">//</span>
             <span className="footer-version">{changelogs.length} VERSIONS</span>
           </div>

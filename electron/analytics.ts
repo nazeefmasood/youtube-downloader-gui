@@ -22,6 +22,8 @@ export interface AnalyticsData {
   avgSpeed: number // bytes per second (actual download speed)
   totalDownloadDuration: number // total seconds spent downloading (for speed calculation)
   formatBreakdown: Record<string, number> // { "mp4": 50, "mp3": 20 }
+  platformBreakdown: Record<string, number> // { "youtube": 50, "tiktok": 20 }
+  sourceBreakdown: { cloud: number; local: number } // Downloads from cloud sync vs local app
   topChannels: Array<{ name: string; count: number }>
   dailyStats: DailyStats[]
   firstDownloadDate: string | null
@@ -39,6 +41,8 @@ export interface DownloadRecord {
   success: boolean
   timestamp: number
   bandwidthBytes?: number // Optional: actual bandwidth used (may differ from bytes for streaming)
+  platform?: string // 'youtube' | 'tiktok' | 'instagram' | etc.
+  source?: 'app' | 'extension' | 'cloud' // Where the download originated
 }
 
 const ANALYTICS_FILE = 'analytics.json'
@@ -68,6 +72,8 @@ class AnalyticsManager {
       avgSpeed: 0,
       totalDownloadDuration: 0,
       formatBreakdown: {},
+      platformBreakdown: {},
+      sourceBreakdown: { cloud: 0, local: 0 },
       topChannels: [],
       dailyStats: [],
       firstDownloadDate: null,
@@ -83,6 +89,8 @@ class AnalyticsManager {
           ...defaultData,
           ...loaded,
           formatBreakdown: loaded.formatBreakdown || {},
+          platformBreakdown: loaded.platformBreakdown || {},
+          sourceBreakdown: loaded.sourceBreakdown || { cloud: 0, local: 0 },
           topChannels: loaded.topChannels || [],
           dailyStats: loaded.dailyStats || [],
         }
@@ -177,6 +185,22 @@ class AnalyticsManager {
     this.data.formatBreakdown[normalizedFormat] = (this.data.formatBreakdown[normalizedFormat] || 0) + 1
   }
 
+  private updatePlatformBreakdown(platform: string | undefined): void {
+    if (!platform) {
+      this.data.platformBreakdown['other'] = (this.data.platformBreakdown['other'] || 0) + 1
+      return
+    }
+    this.data.platformBreakdown[platform] = (this.data.platformBreakdown[platform] || 0) + 1
+  }
+
+  private updateSourceBreakdown(source: 'app' | 'extension' | 'cloud' | undefined): void {
+    if (source === 'cloud' || source === 'extension') {
+      this.data.sourceBreakdown.cloud++
+    } else {
+      this.data.sourceBreakdown.local++
+    }
+  }
+
   recordDownload(record: DownloadRecord): void {
     const today = this.getTodayDate()
 
@@ -209,6 +233,12 @@ class AnalyticsManager {
 
     // Update format breakdown
     this.updateFormatBreakdown(record.format)
+
+    // Update platform breakdown
+    this.updatePlatformBreakdown(record.platform)
+
+    // Update source breakdown
+    this.updateSourceBreakdown(record.source)
 
     // Update top channels
     this.updateTopChannels(record.channel)
@@ -265,6 +295,8 @@ class AnalyticsManager {
       avgSpeed: 0,
       totalDownloadDuration: 0, // We don't have per-day duration, so estimate from success count
       formatBreakdown: {},
+      platformBreakdown: { ...this.data.platformBreakdown },
+      sourceBreakdown: { ...this.data.sourceBreakdown },
       topChannels: this.data.topChannels, // Keep top channels from all time
       dailyStats: filteredStats,
       firstDownloadDate: this.data.firstDownloadDate,
@@ -341,6 +373,8 @@ class AnalyticsManager {
       avgSpeed: 0,
       totalDownloadDuration: 0,
       formatBreakdown: {},
+      platformBreakdown: {},
+      sourceBreakdown: { cloud: 0, local: 0 },
       topChannels: [],
       dailyStats: filteredStats,
       firstDownloadDate: this.data.firstDownloadDate,
@@ -370,6 +404,8 @@ class AnalyticsManager {
       avgSpeed: 0,
       totalDownloadDuration: 0,
       formatBreakdown: {},
+      platformBreakdown: {},
+      sourceBreakdown: { cloud: 0, local: 0 },
       topChannels: [],
       dailyStats: [],
       firstDownloadDate: null,

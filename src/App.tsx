@@ -84,6 +84,12 @@ function App() {
   // Close confirmation dialog state
   const [showCloseConfirm, setShowCloseConfirm] = useState(false);
 
+  // Cloud sync state
+  const [cloudSyncConfig, setCloudSyncConfig] = useState<{ enabled: boolean; config: { apiUrl: string; apiKey: string; userId: string; pollInterval: number } | null } | null>(null);
+  const [cloudSyncVerifying, setCloudSyncVerifying] = useState(false);
+  const [cloudSyncError, setCloudSyncError] = useState<string | null>(null);
+  const [cloudApiKeyInput, setCloudApiKeyInput] = useState('');
+
   const {
     contentInfo,
     isDownloading,
@@ -107,7 +113,7 @@ function App() {
 
   // Initialize theme from localStorage
   useEffect(() => {
-    const savedTheme = localStorage.getItem("vidgrab-theme") as Theme;
+    const savedTheme = localStorage.getItem("grab-theme") as Theme;
     if (savedTheme) {
       setTheme(savedTheme);
       document.documentElement.setAttribute("data-theme", savedTheme);
@@ -144,7 +150,7 @@ function App() {
   const toggleTheme = useCallback(() => {
     const newTheme = theme === "dark" ? "light" : "dark";
     setTheme(newTheme);
-    localStorage.setItem("vidgrab-theme", newTheme);
+    localStorage.setItem("grab-theme", newTheme);
     document.documentElement.setAttribute("data-theme", newTheme);
   }, [theme]);
 
@@ -487,6 +493,20 @@ function App() {
     const unsubscribe = window.electronAPI.onMiniModeChanged((isMini) => {
       setIsMiniMode(isMini);
     });
+    return () => unsubscribe();
+  }, []);
+
+  // Subscribe to cloud sync status
+  useEffect(() => {
+    window.electronAPI.getCloudSyncStatus()
+      .then(setCloudSyncConfig)
+      .catch(console.error);
+
+    const unsubscribe = window.electronAPI.onCloudSyncStatus(() => {
+      // Status updated - refresh config from main process
+      window.electronAPI.getCloudSyncStatus().then(setCloudSyncConfig).catch(console.error);
+    });
+
     return () => unsubscribe();
   }, []);
 
@@ -892,6 +912,68 @@ function App() {
     }
   }, []);
 
+  // Handle cloud sync connection
+  const handleConnectCloudSync = useCallback(async () => {
+    if (!cloudApiKeyInput.trim()) {
+      setCloudSyncError('Please enter an API key');
+      return;
+    }
+
+    setCloudSyncVerifying(true);
+    setCloudSyncError(null);
+
+    try {
+      // Verify the API key via main process (bypasses CORS)
+      const result = await window.electronAPI.verifyCloudSyncKey(
+        'https://getgrab.vercel.app',
+        cloudApiKeyInput.trim()
+      )
+
+      if (!result.success || !result.data?.success) {
+        setCloudSyncError(result.data?.error || result.error || 'Invalid API key');
+        setCloudSyncVerifying(false);
+        return;
+      }
+
+      const userData = result.data.user;
+
+      if (!userData) {
+        setCloudSyncError('Invalid response from server');
+        setCloudSyncVerifying(false);
+        return;
+      }
+
+      // Key verified - start cloud sync
+      const success = await window.electronAPI.startCloudSync({
+        apiUrl: 'https://getgrab.vercel.app',
+        apiKey: cloudApiKeyInput.trim(),
+        userId: userData.id,
+      });
+
+      if (success) {
+        updateSettings({
+          cloudSyncEnabled: true,
+          cloudApiUrl: 'https://getgrab.vercel.app',
+          cloudApiKey: cloudApiKeyInput.trim(),
+          cloudUserId: userData.id,
+        });
+        setCloudApiKeyInput('');
+      } else {
+        setCloudSyncError('Failed to start cloud sync');
+      }
+    } catch (error) {
+      console.error('Cloud sync connection error:', error);
+      setCloudSyncError('Connection failed. Check your network.');
+    } finally {
+      setCloudSyncVerifying(false);
+    }
+  }, [cloudApiKeyInput, updateSettings]);
+
+  const handleDisconnectCloudSync = useCallback(async () => {
+    await window.electronAPI.stopCloudSync();
+    updateSettings({ cloudSyncEnabled: false });
+  }, [updateSettings]);
+
   // Global keyboard shortcuts
   useEffect(() => {
     const handleGlobalKeyDown = (e: KeyboardEvent) => {
@@ -1084,7 +1166,7 @@ function App() {
             </div>
             <div className="binary-modal-title">REQUIRED COMPONENT MISSING</div>
             <div className="binary-modal-text">
-              VidGrab requires yt-dlp to download videos. Click below to
+              Grab requires yt-dlp to download videos. Click below to
               download it automatically.
             </div>
             {binaryError && (
@@ -1155,7 +1237,7 @@ function App() {
             </div>
             <div className="binary-modal-title">FFMPEG REQUIRED</div>
             <div className="binary-modal-text">
-              VidGrab requires FFmpeg to merge video and audio streams. Without it, videos will be downloaded as separate files. Click below to download it automatically.
+              Grab requires FFmpeg to merge video and audio streams. Without it, videos will be downloaded as separate files. Click below to download it automatically.
             </div>
             {ffmpegError && (
               <div className="binary-modal-error">
@@ -1221,7 +1303,7 @@ function App() {
           <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor">
             <path d="M19.615 3.184c-3.604-.246-11.631-.245-15.23 0-3.897.266-4.356 2.62-4.385 8.816.029 6.185.484 8.549 4.385 8.816 3.6.245 11.626.246 15.23 0 3.897-.266 4.356-2.62 4.385-8.816-.029-6.185-.484-8.549-4.385-8.816zm-10.615 12.816v-8l8 3.993-8 4.007z" />
           </svg>
-          <span>VIDGRAB</span>
+          <span>GRAB</span>
           <span style={{ color: "var(--text-muted)", fontWeight: 400 }}>
             v{APP_VERSION}
           </span>
@@ -1274,7 +1356,7 @@ function App() {
                 <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor">
                   <path d="M19.615 3.184c-3.604-.246-11.631-.245-15.23 0-3.897.266-4.356 2.62-4.385 8.816.029 6.185.484 8.549 4.385 8.816 3.6.245 11.626.246 15.23 0 3.897-.266 4.356-2.62 4.385-8.816-.029-6.185-.484-8.549-4.385-8.816zm-10.615 12.816v-8l8 3.993-8 4.007z" />
                 </svg>
-                <span>VidGrab</span>
+                <span>Grab</span>
               </div>
               <div className="mini-header-controls" style={{ WebkitAppRegion: 'no-drag' } as React.CSSProperties}>
                 <button className="mini-header-btn" onClick={handleToggleMiniMode} title="Expand">
@@ -1793,7 +1875,7 @@ function App() {
                     onClick={() => {
                       const newTheme = 'dark' as Theme;
                       setTheme(newTheme);
-                      localStorage.setItem("vidgrab-theme", newTheme);
+                      localStorage.setItem("grab-theme", newTheme);
                       document.documentElement.setAttribute("data-theme", newTheme);
                       updateSettings({ theme: newTheme });
                     }}
@@ -1805,7 +1887,7 @@ function App() {
                     onClick={() => {
                       const newTheme = 'light' as Theme;
                       setTheme(newTheme);
-                      localStorage.setItem("vidgrab-theme", newTheme);
+                      localStorage.setItem("grab-theme", newTheme);
                       document.documentElement.setAttribute("data-theme", newTheme);
                       updateSettings({ theme: newTheme });
                     }}
@@ -2605,6 +2687,90 @@ function App() {
             </div>
 
             <div className="settings-group">
+              <div className="settings-group-title">CLOUD SYNC</div>
+
+              {cloudSyncConfig?.enabled ? (
+                <>
+                  <div className="setting-item">
+                    <div className="setting-info">
+                      <div className="setting-label">Connected to Grab</div>
+                      <div className="setting-description">
+                        Syncing downloads from your phone to desktop
+                      </div>
+                    </div>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                      <span style={{ color: 'var(--success)', fontSize: '12px', fontWeight: 500 }}>
+                        ● Connected
+                      </span>
+                      <button
+                        className="btn-secondary"
+                        onClick={handleDisconnectCloudSync}
+                        style={{ fontSize: '11px' }}
+                      >
+                        DISCONNECT
+                      </button>
+                    </div>
+                  </div>
+                  {cloudSyncConfig.config && (
+                    <div className="setting-item">
+                      <div className="setting-info">
+                        <div className="setting-label">Account</div>
+                        <div className="setting-description">
+                          User ID: {cloudSyncConfig.config.userId.substring(0, 8)}...
+                        </div>
+                      </div>
+                    </div>
+                  )}
+                </>
+              ) : (
+                <div className="setting-item">
+                  <div className="setting-info">
+                    <div className="setting-label">Connect to Grab Cloud</div>
+                    <div className="setting-description">
+                      Sync downloads from your phone - get your API key from grab-app.vercel.app/settings
+                    </div>
+                  </div>
+                  <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
+                    <input
+                      type="password"
+                      placeholder="grab_live_..."
+                      value={cloudApiKeyInput}
+                      onChange={(e) => setCloudApiKeyInput(e.target.value)}
+                      className="settings-input"
+                      style={{
+                        flex: 1,
+                        background: 'var(--input-bg)',
+                        border: '1px solid var(--border)',
+                        borderRadius: '4px',
+                        padding: '6px 10px',
+                        fontSize: '12px',
+                        color: 'var(--text)',
+                      }}
+                    />
+                    <button
+                      className="btn-primary"
+                      onClick={handleConnectCloudSync}
+                      disabled={cloudSyncVerifying || !cloudApiKeyInput.trim()}
+                      style={{ fontSize: '11px', whiteSpace: 'nowrap' }}
+                    >
+                      {cloudSyncVerifying ? 'VERIFYING...' : 'CONNECT'}
+                    </button>
+                  </div>
+                  {cloudSyncError && (
+                    <div style={{
+                      color: 'var(--error)',
+                      fontSize: '11px',
+                      marginTop: '8px',
+                      padding: '0 4px',
+                    }}>
+                      {cloudSyncError}
+                    </div>
+                  )}
+                </div>
+              )}
+            </div>
+
+            <div className="settings-group">
               <div className="settings-group-title">DEBUG LOGS</div>
               <div className="setting-item">
                 <div className="setting-info">
@@ -2657,7 +2823,7 @@ function App() {
                 <div className="setting-info">
                   <div className="setting-label">Current Version</div>
                   <div className="setting-description">
-                    VidGrab v{APP_VERSION}
+                    Grab v{APP_VERSION}
                   </div>
                 </div>
                 <button
@@ -2696,7 +2862,7 @@ function App() {
               <div className="settings-group-title">ABOUT</div>
               <div className="setting-item">
                 <div className="setting-info">
-                  <div className="setting-label">VidGrab</div>
+                  <div className="setting-label">Grab</div>
                   <div className="setting-description">
                     Version {APP_VERSION} // Powered by yt-dlp
                   </div>
@@ -2956,7 +3122,7 @@ function App() {
         <div className="close-confirm-overlay">
           <div className="close-confirm-dialog">
             <div className="close-confirm-title">
-              {hasActiveDownloads ? 'DOWNLOADS IN PROGRESS' : 'EXIT VIDGRAB'}
+              {hasActiveDownloads ? 'DOWNLOADS IN PROGRESS' : 'EXIT GRAB'}
             </div>
             <div className="close-confirm-message">
               {hasActiveDownloads

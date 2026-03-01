@@ -211,7 +211,7 @@ export class Updater extends EventEmitter {
 
       const options: https.RequestOptions = {
         headers: {
-          'User-Agent': 'VidGrab-Updater',
+          'User-Agent': 'Grab-Updater',
           'Accept': 'application/vnd.github.v3+json',
           ...(token ? { Authorization: `Bearer ${token}` } : {}),
         },
@@ -365,7 +365,7 @@ export class Updater extends EventEmitter {
 
       const request = protocol.get(url, {
         headers: {
-          'User-Agent': 'VidGrab-Updater',
+          'User-Agent': 'Grab-Updater',
         },
       }, (response) => {
         // Handle redirects (301, 302, 303, 307, 308)

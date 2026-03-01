@@ -99,6 +99,11 @@ const defaultSettings: AppSettings = {
   preferAV1: false,
   preferHDR: false,
   downloadAllComments: false,
+  cloudSyncEnabled: false,
+  cloudApiUrl: '',
+  cloudApiKey: '',
+  cloudUserId: '',
+  cloudPollInterval: 15000,
 }
 
 export const useDownloadStore = create<DownloadState>((set, get) => ({

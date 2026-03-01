@@ -279,7 +279,7 @@ export function startHttpServer(queueManager: QueueManager): Promise<http.Server
     })
 
     server.listen(PORT, HOST, () => {
-      console.log(`VidGrab HTTP server listening on http://${HOST}:${PORT}`)
+      console.log(`Grab HTTP server listening on http://${HOST}:${PORT}`)
       resolve(server)
     })
   })

@@ -1,7 +1,7 @@
 {
-  "name": "vidgrab",
-  "version": "1.6.3",
-  "description": "Fast & beautiful YouTube video downloader - Download videos, playlists, and channels with ease",
+  "name": "grab",
+  "version": "1.7.0",
+  "description": "Universal video downloader supporting 1000+ platforms including YouTube, TikTok, Twitch, Twitter, Instagram, Reddit, Vimeo, and Facebook. Features AV1/HDR video quality, subtitle downloads, batch processing, playlist/channel support, queue management with priority controls, auto-retry, cloud sync, browser extension integration, and comprehensive analytics. Built with Electron and powered by yt-dlp for maximum compatibility.",
   "main": "dist-electron/main.js",
   "scripts": {
     "dev": "vite",
@@ -23,11 +23,11 @@
     "electron",
     "yt-dlp",
     "video",
-    "vidgrab"
+    "grab"
   ],
   "author": {
     "name": "Nazeef Masood",
-    "email": "nazeef@vidgrab.app"
+    "email": "nazeef@grab.app"
   },
   "license": "MIT",
   "type": "commonjs",
@@ -59,8 +59,8 @@
     "zustand": "^5.0.11"
   },
   "build": {
-    "appId": "com.vidgrab.app",
-    "productName": "VidGrab",
+    "appId": "app.grab.desktop",
+    "productName": "Grab",
     "compression": "maximum",
     "directories": {
       "output": "release"
@@ -100,8 +100,8 @@
       "allowToChangeInstallationDirectory": true,
       "createDesktopShortcut": true,
       "createStartMenuShortcut": true,
-      "shortcutName": "VidGrab",
-      "uninstallDisplayName": "VidGrab",
+      "shortcutName": "Grab",
+      "uninstallDisplayName": "Grab",
       "installerIcon": "resources/icon.ico",
       "uninstallerIcon": "resources/icon.ico",
       "installerHeaderIcon": "resources/icon.ico",
@@ -115,7 +115,7 @@
       "category": "public.app-category.utilities"
     },
     "dmg": {
-      "title": "VidGrab Installer",
+      "title": "Grab Installer",
       "icon": "resources/icon.png"
     },
     "linux": {
@@ -125,8 +125,8 @@
       ],
       "icon": "resources/icon.png",
       "category": "AudioVideo",
-      "synopsis": "YouTube Video Downloader",
-      "description": "Fast & beautiful YouTube video downloader - Download videos, playlists, and channels with ease. Powered by yt-dlp."
+      "synopsis": "Video Downloader",
+      "description": "Fast & beautiful video downloader - Download videos, playlists, and channels with ease. Powered by yt-dlp."
     },
     "deb": {
       "depends": [

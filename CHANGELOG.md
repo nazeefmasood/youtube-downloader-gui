@@ -1,6 +1,35 @@
 # Changelog
 
-All notable changes to VidGrab will be documented in this file.
+All notable changes to Grab will be documented in this file.
+
+## [1.7.0] - 2026-03-01
+
+### Breaking Changes
+- **Rebrand to "Grab"** — VidGrab is now Grab
+  - New app name, branding, and identity
+  - Updated all package metadata and identifiers
+  - App ID changed from `com.vidgrab.app` to `app.grab.desktop`
+  - Storage keys migrated from `vidgrab-*` to `grab-*`
+
+### Added
+- **Grab Cloud Sync** — Sync your download queue across devices
+  - Connect to Grab Cloud at getgrab.vercel.app
+  - API key authentication for secure sync
+  - Automatic polling for remote queue updates
+  - Configure in Settings → Cloud Sync
+- **Platform Detection** — Visual indicators for different platforms
+  - Shows platform icon and color for each download
+  - Supports YouTube, Twitch, TikTok, Twitter/X, Instagram, Reddit, Vimeo, Facebook
+  - New utility functions for platform-specific styling
+
+### Changed
+- **New App Icons** — Refreshed icon design for Grab branding
+  - Updated icons for all platforms (Windows, macOS, Linux)
+  - New extension icons matching app branding
+  - Added 512px icon variant
+
+### Removed
+- **FEATURES.md** — Consolidated documentation into README
 
 ## [1.6.3] - 2026-03-01
 

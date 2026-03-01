@@ -1,5 +1,6 @@
 import { useCallback, useState, useRef, useEffect, useMemo } from 'react'
 import type { QueueItem, QueueStatus, DownloadProgress, AppSettings } from '../../types'
+import { getPlatformIcon, getPlatformColor, getPlatformLabel } from '../../lib/platform'
 
 interface DownloadsTabProps {
   queueStatus: QueueStatus
@@ -476,6 +477,19 @@ export function DownloadsTab({ queueStatus, downloadProgress, settings }: Downlo
           {item.title}
         </div>
         <div className="queue-item-meta">
+          {/* Platform tag with color */}
+          {item.platform && (
+            <span
+              className="queue-item-tag tag-platform"
+              style={{ borderColor: getPlatformColor(item.platform), color: getPlatformColor(item.platform) }}
+            >
+              {getPlatformIcon(item.platform)} {getPlatformLabel(item.platform)}
+            </span>
+          )}
+          {/* Source tag: CLOUD (purple) or LOCAL (green) */}
+          <span className={`queue-item-tag tag-origin ${item.source === 'cloud' ? 'cloud' : 'local'}`}>
+            {item.source === 'cloud' ? 'CLOUD' : item.source === 'extension' ? 'EXT' : 'LOCAL'}
+          </span>
           <span className={`queue-item-tag tag-type ${item.contentType || (item.audioOnly ? 'audio' : 'video')}`}>
             {item.contentType === 'subtitle' ? `SUB ${item.subtitleDisplayNames || 'ALL'}`
               : item.contentType === 'video+sub'
@@ -484,8 +498,8 @@ export function DownloadsTab({ queueStatus, downloadProgress, settings }: Downlo
                 ? `AUDIO${item.qualityLabel ? ` ${item.qualityLabel}` : ''}`
                 : `VIDEO${item.qualityLabel ? ` ${item.qualityLabel}` : ''}`}
           </span>
-          <span className={`queue-item-tag tag-source ${item.source === 'extension' ? 'ext' : (item.sourceType || 'single')}`}>
-            {item.source === 'extension' ? 'EXTENSION'
+          <span className={`queue-item-tag tag-source ${item.source === 'extension' || item.source === 'cloud' ? 'ext' : (item.sourceType || 'single')}`}>
+            {item.source === 'extension' || item.source === 'cloud' ? 'EXTERNAL'
               : item.sourceType === 'playlist' ? 'PLAYLIST'
               : item.sourceType === 'channel' ? 'CHANNEL'
               : 'SINGLE'}

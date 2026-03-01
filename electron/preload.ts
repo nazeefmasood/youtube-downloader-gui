@@ -393,4 +393,23 @@ contextBridge.exposeInMainWorld('electronAPI', {
 
   // System operations
   shutdownSystem: () => ipcRenderer.invoke('system:shutdown'),
+
+  // Cloud Sync
+  verifyCloudSyncKey: (apiUrl: string, apiKey: string) =>
+    ipcRenderer.invoke('cloudSync:verifyKey', { apiUrl, apiKey }),
+  getCloudSyncStatus: () => ipcRenderer.invoke('cloudSync:getStatus'),
+  startCloudSync: (config: { apiUrl: string; apiKey: string; userId: string; pollInterval?: number }) =>
+    ipcRenderer.invoke('cloudSync:start', config),
+  stopCloudSync: () => ipcRenderer.invoke('cloudSync:stop'),
+  onCloudSyncStatus: (callback: (status: {
+    enabled: boolean
+    polling: boolean
+    lastPoll: string | null
+    error?: string
+    itemsFound?: number
+  }) => void) => {
+    const subscription = (_event: Electron.IpcRendererEvent, status: Parameters<typeof callback>[0]) => callback(status)
+    ipcRenderer.on('cloudSync:status', subscription)
+    return () => ipcRenderer.removeListener('cloudSync:status', subscription)
+  },
 })

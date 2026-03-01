@@ -1,5 +1,5 @@
 /**
- * Theme system for VidGrab
+ * Theme system for Grab
  * Supports preset themes and custom accent colors
  */
 
@@ -198,6 +198,6 @@ export function applyTheme(theme: ThemeColors): void {
 }
 
 /**
- * Default theme (purple - original VidGrab look)
+ * Default theme (purple - original Grab look)
  */
 export const DEFAULT_THEME: ThemeColors = PRESET_THEMES[0]

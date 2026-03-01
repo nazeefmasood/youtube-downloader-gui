@@ -5,6 +5,20 @@ import * as path from 'path'
 import * as fs from 'fs'
 import { logger } from './logger'
 
+// Platform detection from URL
+function detectPlatform(url: string): string | null {
+  const urlLower = url.toLowerCase()
+  if (urlLower.includes('youtube.com') || urlLower.includes('youtu.be')) return 'youtube'
+  if (urlLower.includes('twitch.tv')) return 'twitch'
+  if (urlLower.includes('tiktok.com')) return 'tiktok'
+  if (urlLower.includes('twitter.com') || urlLower.includes('x.com')) return 'twitter'
+  if (urlLower.includes('instagram.com')) return 'instagram'
+  if (urlLower.includes('reddit.com')) return 'reddit'
+  if (urlLower.includes('vimeo.com')) return 'vimeo'
+  if (urlLower.includes('facebook.com') || urlLower.includes('fb.watch')) return 'facebook'
+  return null
+}
+
 export interface SubtitleOptions {
   enabled: boolean
   languages: string[]
@@ -25,7 +39,7 @@ export interface QueueItem {
   status: 'pending' | 'downloading' | 'completed' | 'failed' | 'cancelled' | 'paused' | 'retrying'
   progress?: DownloadProgress
   addedAt: number
-  source: 'app' | 'extension'
+  source: 'app' | 'extension' | 'cloud' // Where the download originated
   sourceType?: 'single' | 'playlist' | 'channel'
   contentType?: 'video' | 'audio' | 'subtitle' | 'video+sub'
   subtitleOptions?: SubtitleOptions
@@ -36,6 +50,7 @@ export interface QueueItem {
   nextRetryAt?: number
   autoRetryEnabled?: boolean
   priority?: number // 0 = normal (default), higher = more urgent. 1 = "Download Next"
+  platform?: string // Detected platform: 'youtube' | 'tiktok' | etc.
 }
 
 export interface BatchStatus {
@@ -550,13 +565,16 @@ export class QueueManager extends EventEmitter {
     }
   }
 
-  addItem(item: Omit<QueueItem, 'id' | 'status' | 'addedAt'>): { id: string; position: number } {
+  addItem(item: Omit<QueueItem, 'id' | 'status' | 'addedAt' | 'platform'> & { platform?: string }): { id: string; position: number } {
     const id = `queue-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`
+    // Detect platform from URL if not provided
+    const detectedPlatform = item.platform || detectPlatform(item.url)
     const newItem: QueueItem = {
       ...item,
       id,
       status: 'pending',
       addedAt: Date.now(),
+      platform: detectedPlatform || undefined,
     }
 
     this.items.push(newItem)

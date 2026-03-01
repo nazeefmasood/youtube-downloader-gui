@@ -1,8 +1,8 @@
 {
   "manifest_version": 3,
-  "name": "VidGrab - YouTube Downloader",
-  "description": "Download YouTube videos directly to VidGrab desktop app",
-  "version": "1.6.0",
+  "name": "Grab - Video Downloader",
+  "description": "Download videos from YouTube directly to Grab desktop app. Supports multiple formats, quality selection, and seamless queue integration.",
+  "version": "1.7.0",
   "permissions": [
     "activeTab",
     "storage"
@@ -24,7 +24,7 @@
       "48": "icons/icon48.png",
       "128": "icons/icon128.png"
     },
-    "default_title": "VidGrab"
+    "default_title": "Grab"
   },
   "background": {
     "service_worker": "background/service-worker.js"

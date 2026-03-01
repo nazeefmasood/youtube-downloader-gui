@@ -109,13 +109,14 @@ export interface QueueItem {
   title: string
   thumbnail?: string
   channel?: string // Channel/uploader name for analytics
+  platform?: string // 'youtube' | 'tiktok' | 'twitch' | 'twitter' | etc.
   format: string
   qualityLabel?: string
   audioOnly: boolean
   status: 'pending' | 'downloading' | 'completed' | 'failed' | 'cancelled' | 'paused' | 'retrying'
   progress?: DownloadProgress
   addedAt: number
-  source: 'app' | 'extension'
+  source: 'app' | 'extension' | 'cloud'
   sourceType?: 'single' | 'playlist' | 'channel'
   contentType?: 'video' | 'audio' | 'subtitle' | 'video+sub'
   subtitleOptions?: SubtitleOptions
@@ -236,6 +237,21 @@ export interface ThemeColors {
 
 export type SoundNotificationMode = 'every' | 'each-item' | 'batch-complete'
 
+export interface CloudSyncConfig {
+  apiUrl: string
+  apiKey: string
+  userId: string
+  pollInterval: number
+}
+
+export interface CloudSyncStatus {
+  enabled: boolean
+  polling: boolean
+  lastPoll: string | null
+  error?: string
+  itemsFound?: number
+}
+
 export interface AppSettings {
   downloadPath: string
   defaultQuality: string
@@ -271,6 +287,11 @@ export interface AppSettings {
   preferAV1: boolean  // Prefer AV1 codec for better compression
   preferHDR: boolean  // Preserve HDR metadata when available
   downloadAllComments: boolean  // Download video comments as JSON
+  cloudSyncEnabled: boolean  // Enable Grab cloud sync
+  cloudApiUrl: string  // Grab cloud API URL
+  cloudApiKey: string  // Desktop API key
+  cloudUserId: string  // Cloud user ID
+  cloudPollInterval: number  // Poll interval in ms
 }
 
 export interface ElectronAPI {
@@ -441,6 +462,21 @@ export interface ElectronAPI {
 
   // System operations
   shutdownSystem: () => Promise<void>
+
+  // Cloud Sync
+  verifyCloudSyncKey: (apiUrl: string, apiKey: string) => Promise<{
+    success: boolean;
+    data?: {
+      success?: boolean;
+      user?: { id: string; email: string; name: string | null; username: string | null };
+      error?: string;
+    };
+    error?: string;
+  }>
+  getCloudSyncStatus: () => Promise<{ enabled: boolean; config: CloudSyncConfig | null }>
+  startCloudSync: (config: { apiUrl: string; apiKey: string; userId: string; pollInterval?: number }) => Promise<boolean>
+  stopCloudSync: () => Promise<boolean>
+  onCloudSyncStatus: (callback: (status: CloudSyncStatus) => void) => () => void
 }
 
 export interface DailyStats {

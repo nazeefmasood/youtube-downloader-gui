@@ -78,7 +78,7 @@ async function authFetch(endpoint, options = {}) {
   return response;
 }
 
-// Check if VidGrab app is running
+// Check if Grab app is running
 async function checkAppStatus() {
   try {
     const response = await fetch(`${API_BASE}/api/status`, {

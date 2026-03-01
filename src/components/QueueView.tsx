@@ -124,7 +124,7 @@ export function QueueView() {
           <div className="empty-state-hint">
             <div className="hint-item">
               <span className="hint-icon">1</span>
-              <span>Install the VidGrab browser extension</span>
+              <span>Install the Grab browser extension</span>
             </div>
             <div className="hint-item">
               <span className="hint-icon">2</span>

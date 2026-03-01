@@ -94,7 +94,7 @@ export class TrayManager {
     this.tray = new Tray(iconPath)
 
     this.updateTrayMenu()
-    this.updateTrayTooltip('VidGrab - Idle')
+    this.updateTrayTooltip('Grab - Idle')
 
     // Handle tray click
     this.tray.on('click', () => {
@@ -164,7 +164,7 @@ export class TrayManager {
     const failedCount = status.items.filter(i => i.status === 'failed').length
     const totalCount = status.items.length
 
-    let tooltip = 'VidGrab'
+    let tooltip = 'Grab'
 
     if (isPaused) {
       tooltip += ' - Paused'
@@ -281,7 +281,7 @@ export class TrayManager {
 
     // Main actions
     template.push({
-      label: 'Open VidGrab',
+      label: 'Open Grab',
       click: () => this.showWindow(),
     })
 
@@ -322,7 +322,7 @@ export class TrayManager {
 
     // Quit
     template.push({
-      label: 'Quit VidGrab',
+      label: 'Quit Grab',
       click: () => {
         // Destroy the window first to bypass close-to-tray prevention
         if (this.mainWindow && !this.mainWindow.isDestroyed()) {

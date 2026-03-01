@@ -1,4 +1,4 @@
-// VidGrab Extension Popup
+// Grab Extension Popup
 
 let currentUrl = null;
 let currentFormats = null;

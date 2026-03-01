@@ -174,7 +174,7 @@ export function setupAnalyticsHandlers(queueManager: QueueManager): void {
 
   // Intercept queue add to track start time and channel
   const originalAddItem = queueManager.addItem
-  queueManager.addItem = function(item: Omit<any, 'id' | 'status' | 'addedAt'>) {
+  queueManager.addItem = function(item: Parameters<typeof originalAddItem>[0]) {
     const result = originalAddItem.call(this, item)
 
     // Store metadata including channel for analytics

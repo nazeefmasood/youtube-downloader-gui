@@ -12,6 +12,7 @@ import { subscriptionManager, Subscription, NewVideo } from './subscriptions'
 import { getAnalyticsManager, DownloadRecord } from './analytics'
 import { TrayManager } from './trayManager'
 import { setupAnalyticsHandlers } from './analyticsHandlers'
+import { CloudSync } from './cloudSync'
 import * as http from 'http'
 import * as crypto from 'crypto'
 
@@ -98,6 +99,7 @@ let mainWindow: BrowserWindow | null = null
 let downloader: Downloader | null = null
 let queueManager: QueueManager | null = null
 let trayManager: TrayManager | null = null
+let cloudSync: CloudSync | null = null
 let httpServer: http.Server | null = null
 let potStatusInterval: NodeJS.Timeout | null = null
 
@@ -302,6 +304,23 @@ function createWindow() {
   }).catch((error) => {
     console.error('Failed to start HTTP server:', error)
   })
+
+  // Initialize cloud sync
+  cloudSync = new CloudSync(queueManager)
+  cloudSync.on('status', (status: Record<string, unknown>) => {
+    mainWindow?.webContents.send('cloudSync:status', status)
+  })
+  // Auto-start cloud sync if configured
+  const cloudSettings = store.get('settings')
+  if (cloudSettings.cloudSyncEnabled && cloudSettings.cloudApiUrl && cloudSettings.cloudApiKey && cloudSettings.cloudUserId) {
+    cloudSync.configure({
+      apiUrl: cloudSettings.cloudApiUrl as string,
+      apiKey: cloudSettings.cloudApiKey as string,
+      userId: cloudSettings.cloudUserId as string,
+      pollInterval: (cloudSettings.cloudPollInterval as number) || 15000,
+    })
+    cloudSync.start()
+  }
 
   // Start PO Token server
   const settings = store.get('settings')
@@ -664,6 +683,11 @@ ipcMain.handle('settings:get', () => {
     preferAV1: false,  // Prefer AV1 codec for better compression
     preferHDR: false,  // Preserve HDR metadata when available
     downloadAllComments: false,  // Download video comments as JSON
+    cloudSyncEnabled: false,  // Grab cloud sync
+    cloudApiUrl: '',
+    cloudApiKey: '',
+    cloudUserId: '',
+    cloudPollInterval: 15000,
   }
   return { ...defaults, ...store.get('settings') }
 })
@@ -692,6 +716,73 @@ ipcMain.handle('settings:save', (_event, settings: Record<string, unknown>) => {
       autoRetryEnabled: newSettings.autoRetryEnabled as boolean ?? true,
     })
   }
+
+  // Sync cloud sync settings
+  if (cloudSync) {
+    if (newSettings.cloudSyncEnabled && newSettings.cloudApiUrl && newSettings.cloudApiKey && newSettings.cloudUserId) {
+      cloudSync.configure({
+        apiUrl: newSettings.cloudApiUrl as string,
+        apiKey: newSettings.cloudApiKey as string,
+        userId: newSettings.cloudUserId as string,
+        pollInterval: (newSettings.cloudPollInterval as number) || 15000,
+      })
+      if (!cloudSync.isEnabled()) cloudSync.start()
+    } else if (!newSettings.cloudSyncEnabled && cloudSync.isEnabled()) {
+      cloudSync.stop()
+    }
+  }
+})
+
+// Cloud Sync
+ipcMain.handle('cloudSync:verifyKey', async (_event, { apiUrl, apiKey }: { apiUrl: string; apiKey: string }) => {
+  try {
+    const response = await fetch(`${apiUrl}/api/auth/verify-key`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ apiKey }),
+    })
+    const data = await response.json()
+    return { success: response.ok, data }
+  } catch (error) {
+    return { success: false, error: error instanceof Error ? error.message : 'Connection failed' }
+  }
+})
+
+ipcMain.handle('cloudSync:getStatus', () => {
+  return {
+    enabled: cloudSync?.isEnabled() ?? false,
+    config: cloudSync?.getConfig() ?? null,
+  }
+})
+
+ipcMain.handle('cloudSync:start', (_event, config: { apiUrl: string; apiKey: string; userId: string; pollInterval?: number }) => {
+  if (!cloudSync) return false
+  cloudSync.configure({
+    apiUrl: config.apiUrl,
+    apiKey: config.apiKey,
+    userId: config.userId,
+    pollInterval: config.pollInterval || 15000,
+  })
+  cloudSync.start()
+  // Save to settings
+  const current = store.get('settings')
+  store.set('settings', {
+    ...current,
+    cloudSyncEnabled: true,
+    cloudApiUrl: config.apiUrl,
+    cloudApiKey: config.apiKey,
+    cloudUserId: config.userId,
+    cloudPollInterval: config.pollInterval || 15000,
+  })
+  return true
+})
+
+ipcMain.handle('cloudSync:stop', () => {
+  if (!cloudSync) return false
+  cloudSync.stop()
+  const current = store.get('settings')
+  store.set('settings', { ...current, cloudSyncEnabled: false })
+  return true
 })
 
 // History
@@ -1499,7 +1590,7 @@ ipcMain.handle('history:export', async (_event, format: 'csv' | 'json' | 'markdo
 
   const result = await dialog.showSaveDialog(mainWindow!, {
     title: 'Export Download History',
-    defaultPath: `vidgrab-history-${new Date().toISOString().split('T')[0]}.${ext}`,
+    defaultPath: `grab-history-${new Date().toISOString().split('T')[0]}.${ext}`,
     filters,
   })
 
@@ -1526,7 +1617,7 @@ ipcMain.handle('history:export', async (_event, format: 'csv' | 'json' | 'markdo
     ])
     content = [headers.join(','), ...rows.map(r => r.join(','))].join('\n')
   } else if (format === 'markdown') {
-    content = '# VidGrab Download History\n\n'
+    content = '# Grab Download History\n\n'
     content += `*Exported on ${new Date().toLocaleString()}*\n\n`
     content += `Total downloads: ${history.length}\n\n---\n\n`
 

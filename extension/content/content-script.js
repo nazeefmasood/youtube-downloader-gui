@@ -1,4 +1,4 @@
-// VidGrab Content Script for YouTube
+// Grab Content Script for YouTube
 // Injects download button and modal into YouTube video pages
 
 let downloadButton = null;
@@ -32,8 +32,8 @@ function getVideoId() {
 // Create the download button element for videos
 function createDownloadButton() {
   const button = document.createElement('button');
-  button.id = 'vidgrab-download-btn';
-  button.className = 'vidgrab-btn';
+  button.id = 'grab-download-btn';
+  button.className = 'grab-btn';
   button.innerHTML = `
     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
       <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
@@ -42,7 +42,7 @@ function createDownloadButton() {
     </svg>
     <span>Download</span>
   `;
-  button.title = 'Download with VidGrab';
+  button.title = 'Download with Grab';
   button.addEventListener('click', handleDownloadClick);
   return button;
 }
@@ -50,8 +50,8 @@ function createDownloadButton() {
 // Create download all button for playlists/channels
 function createPlaylistButton(type, count) {
   const button = document.createElement('button');
-  button.id = 'vidgrab-playlist-btn';
-  button.className = 'vidgrab-playlist-btn';
+  button.id = 'grab-playlist-btn';
+  button.className = 'grab-playlist-btn';
   const label = type === 'playlist' ? 'Download Playlist' : 'Download Channel';
   button.innerHTML = `
     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
@@ -61,7 +61,7 @@ function createPlaylistButton(type, count) {
     </svg>
     <span>${label}${count ? ` (${count})` : ''}</span>
   `;
-  button.title = `${label} with VidGrab`;
+  button.title = `${label} with Grab`;
   button.addEventListener('click', () => handlePlaylistDownloadClick(type));
   return button;
 }
@@ -69,19 +69,19 @@ function createPlaylistButton(type, count) {
 // Create modal for quality selection
 function createModal() {
   const modalEl = document.createElement('div');
-  modalEl.id = 'vidgrab-modal';
-  modalEl.className = 'vidgrab-modal';
+  modalEl.id = 'grab-modal';
+  modalEl.className = 'grab-modal';
   modalEl.innerHTML = `
-    <div class="vidgrab-modal-backdrop"></div>
-    <div class="vidgrab-modal-content">
-      <div class="vidgrab-modal-header">
-        <div class="vidgrab-modal-logo">
+    <div class="grab-modal-backdrop"></div>
+    <div class="grab-modal-content">
+      <div class="grab-modal-header">
+        <div class="grab-modal-logo">
           <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor">
             <path d="M19.615 3.184c-3.604-.246-11.631-.245-15.23 0-3.897.266-4.356 2.62-4.385 8.816.029 6.185.484 8.549 4.385 8.816 3.6.245 11.626.246 15.23 0 3.897-.266 4.356-2.62 4.385-8.816-.029-6.185-.484-8.549-4.385-8.816zm-10.615 12.816v-8l8 3.993-8 4.007z"/>
           </svg>
-          <span>VIDGRAB</span>
+          <span>GRAB</span>
         </div>
-        <button class="vidgrab-modal-close" id="vidgrab-close-btn">
+        <button class="grab-modal-close" id="grab-close-btn">
           <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
             <line x1="18" y1="6" x2="6" y2="18"/>
             <line x1="6" y1="6" x2="18" y2="18"/>
@@ -89,38 +89,38 @@ function createModal() {
         </button>
       </div>
 
-      <div class="vidgrab-modal-body">
-        <div id="vidgrab-loading" class="vidgrab-state">
-          <div class="vidgrab-spinner"></div>
-          <div class="vidgrab-state-text">CONNECTING<span class="vidgrab-blink">_</span></div>
+      <div class="grab-modal-body">
+        <div id="grab-loading" class="grab-state">
+          <div class="grab-spinner"></div>
+          <div class="grab-state-text">CONNECTING<span class="grab-blink">_</span></div>
         </div>
 
-        <div id="vidgrab-not-running" class="vidgrab-state vidgrab-hidden">
-          <div class="vidgrab-state-icon error">!</div>
-          <div class="vidgrab-state-title">APP NOT RUNNING</div>
-          <div class="vidgrab-state-text">// Start VidGrab desktop app first</div>
+        <div id="grab-not-running" class="grab-state grab-hidden">
+          <div class="grab-state-icon error">!</div>
+          <div class="grab-state-title">APP NOT RUNNING</div>
+          <div class="grab-state-text">// Start Grab desktop app first</div>
         </div>
 
-        <div id="vidgrab-formats" class="vidgrab-hidden">
-          <div class="vidgrab-video-info">
-            <div class="vidgrab-video-thumb" id="vidgrab-thumb"></div>
-            <div class="vidgrab-video-details">
-              <div class="vidgrab-video-title" id="vidgrab-title">Loading...</div>
-              <div class="vidgrab-video-meta" id="vidgrab-meta">VIDEO</div>
+        <div id="grab-formats" class="grab-hidden">
+          <div class="grab-video-info">
+            <div class="grab-video-thumb" id="grab-thumb"></div>
+            <div class="grab-video-details">
+              <div class="grab-video-title" id="grab-title">Loading...</div>
+              <div class="grab-video-meta" id="grab-meta">VIDEO</div>
             </div>
           </div>
 
-          <div class="vidgrab-section">
-            <div class="vidgrab-section-title">// VIDEO QUALITY</div>
-            <div class="vidgrab-format-list" id="vidgrab-video-formats"></div>
+          <div class="grab-section">
+            <div class="grab-section-title">// VIDEO QUALITY</div>
+            <div class="grab-format-list" id="grab-video-formats"></div>
           </div>
 
-          <div class="vidgrab-section">
-            <div class="vidgrab-section-title">// AUDIO ONLY</div>
-            <div class="vidgrab-format-list" id="vidgrab-audio-formats"></div>
+          <div class="grab-section">
+            <div class="grab-section-title">// AUDIO ONLY</div>
+            <div class="grab-format-list" id="grab-audio-formats"></div>
           </div>
 
-          <button class="vidgrab-download-btn" id="vidgrab-add-queue" disabled>
+          <button class="grab-download-btn" id="grab-add-queue" disabled>
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
               <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
               <polyline points="7 10 12 15 17 10"/>
@@ -130,23 +130,23 @@ function createModal() {
           </button>
         </div>
 
-        <div id="vidgrab-success" class="vidgrab-state vidgrab-hidden">
-          <div class="vidgrab-state-icon success">✓</div>
-          <div class="vidgrab-state-title">QUEUED</div>
-          <div class="vidgrab-state-text" id="vidgrab-success-msg">// Download added to queue</div>
-          <button class="vidgrab-btn-secondary" id="vidgrab-another">ADD ANOTHER</button>
+        <div id="grab-success" class="grab-state grab-hidden">
+          <div class="grab-state-icon success">✓</div>
+          <div class="grab-state-title">QUEUED</div>
+          <div class="grab-state-text" id="grab-success-msg">// Download added to queue</div>
+          <button class="grab-btn-secondary" id="grab-another">ADD ANOTHER</button>
         </div>
 
-        <div id="vidgrab-error" class="vidgrab-state vidgrab-hidden">
-          <div class="vidgrab-state-icon error">!</div>
-          <div class="vidgrab-state-title">ERROR</div>
-          <div class="vidgrab-state-text" id="vidgrab-error-msg">// Something went wrong</div>
-          <button class="vidgrab-btn-secondary" id="vidgrab-retry">RETRY</button>
+        <div id="grab-error" class="grab-state grab-hidden">
+          <div class="grab-state-icon error">!</div>
+          <div class="grab-state-title">ERROR</div>
+          <div class="grab-state-text" id="grab-error-msg">// Something went wrong</div>
+          <button class="grab-btn-secondary" id="grab-retry">RETRY</button>
         </div>
       </div>
 
-      <div class="vidgrab-modal-footer">
-        <span>VIDGRAB v1.1.0</span>
+      <div class="grab-modal-footer">
+        <span>GRAB v1.1.0</span>
       </div>
     </div>
   `;
@@ -154,15 +154,15 @@ function createModal() {
   document.body.appendChild(modalEl);
 
   // Event listeners
-  modalEl.querySelector('.vidgrab-modal-backdrop').addEventListener('click', closeModal);
-  modalEl.querySelector('#vidgrab-close-btn').addEventListener('click', closeModal);
-  modalEl.querySelector('#vidgrab-add-queue').addEventListener('click', addToQueue);
-  modalEl.querySelector('#vidgrab-another').addEventListener('click', () => loadFormats(currentVideoUrl));
-  modalEl.querySelector('#vidgrab-retry').addEventListener('click', () => loadFormats(currentVideoUrl));
+  modalEl.querySelector('.grab-modal-backdrop').addEventListener('click', closeModal);
+  modalEl.querySelector('#grab-close-btn').addEventListener('click', closeModal);
+  modalEl.querySelector('#grab-add-queue').addEventListener('click', addToQueue);
+  modalEl.querySelector('#grab-another').addEventListener('click', () => loadFormats(currentVideoUrl));
+  modalEl.querySelector('#grab-retry').addEventListener('click', () => loadFormats(currentVideoUrl));
 
   // Close on escape
   document.addEventListener('keydown', (e) => {
-    if (e.key === 'Escape' && modal && !modal.classList.contains('vidgrab-hidden')) {
+    if (e.key === 'Escape' && modal && !modal.classList.contains('grab-hidden')) {
       closeModal();
     }
   });
@@ -175,25 +175,25 @@ function showModal() {
   if (!modal) {
     modal = createModal();
   }
-  modal.classList.remove('vidgrab-hidden');
+  modal.classList.remove('grab-hidden');
   document.body.style.overflow = 'hidden';
 }
 
 // Close modal
 function closeModal() {
   if (modal) {
-    modal.classList.add('vidgrab-hidden');
+    modal.classList.add('grab-hidden');
     document.body.style.overflow = '';
   }
 }
 
 // Show specific state in modal
 function showState(stateId) {
-  const states = ['vidgrab-loading', 'vidgrab-not-running', 'vidgrab-formats', 'vidgrab-success', 'vidgrab-error'];
+  const states = ['grab-loading', 'grab-not-running', 'grab-formats', 'grab-success', 'grab-error'];
   states.forEach(id => {
     const el = document.getElementById(id);
     if (el) {
-      el.classList.toggle('vidgrab-hidden', id !== stateId);
+      el.classList.toggle('grab-hidden', id !== stateId);
     }
   });
 }
@@ -218,14 +218,14 @@ async function handlePlaylistDownloadClick(type) {
   const url = window.location.href;
 
   showModal();
-  showState('vidgrab-loading');
+  showState('grab-loading');
 
   try {
     // Check if app is running
     const status = await sendMessage({ type: 'CHECK_STATUS' });
 
     if (!status || !status.running) {
-      showState('vidgrab-not-running');
+      showState('grab-not-running');
       return;
     }
 
@@ -252,21 +252,21 @@ async function handlePlaylistDownloadClick(type) {
       throw new Error(result.error);
     }
 
-    document.getElementById('vidgrab-success-msg').textContent = `// ${type === 'playlist' ? 'Playlist' : 'Channel'} added at position ${result.position}`;
-    showState('vidgrab-success');
+    document.getElementById('grab-success-msg').textContent = `// ${type === 'playlist' ? 'Playlist' : 'Channel'} added at position ${result.position}`;
+    showState('grab-success');
   } catch (error) {
-    console.error('VidGrab error:', error);
-    document.getElementById('vidgrab-error-msg').textContent = `// ${error.message || 'Failed to add to queue'}`;
-    showState('vidgrab-error');
+    console.error('Grab error:', error);
+    document.getElementById('grab-error-msg').textContent = `// ${error.message || 'Failed to add to queue'}`;
+    showState('grab-error');
   }
 }
 
-// Load formats from VidGrab
+// Load formats from Grab
 let selectedFormat = null;
 let videoInfo = null;
 
 async function loadFormats(url) {
-  showState('vidgrab-loading');
+  showState('grab-loading');
   selectedFormat = null;
   videoInfo = null;
 
@@ -275,7 +275,7 @@ async function loadFormats(url) {
     const status = await sendMessage({ type: 'CHECK_STATUS' });
 
     if (!status || !status.running) {
-      showState('vidgrab-not-running');
+      showState('grab-not-running');
       return;
     }
 
@@ -293,19 +293,19 @@ async function loadFormats(url) {
     };
 
     // Update UI
-    document.getElementById('vidgrab-title').textContent = data.title;
-    document.getElementById('vidgrab-meta').textContent = (data.type || 'VIDEO').toUpperCase();
+    document.getElementById('grab-title').textContent = data.title;
+    document.getElementById('grab-meta').textContent = (data.type || 'VIDEO').toUpperCase();
 
-    const thumbEl = document.getElementById('vidgrab-thumb');
+    const thumbEl = document.getElementById('grab-thumb');
     if (data.thumbnail) {
       thumbEl.innerHTML = `<img src="${data.thumbnail}" alt="Thumbnail">`;
     } else {
-      thumbEl.innerHTML = `<div class="vidgrab-thumb-placeholder"><svg viewBox="0 0 24 24" fill="currentColor"><path d="M8 5v14l11-7z"/></svg></div>`;
+      thumbEl.innerHTML = `<div class="grab-thumb-placeholder"><svg viewBox="0 0 24 24" fill="currentColor"><path d="M8 5v14l11-7z"/></svg></div>`;
     }
 
     // Populate formats
-    const videoFormatsEl = document.getElementById('vidgrab-video-formats');
-    const audioFormatsEl = document.getElementById('vidgrab-audio-formats');
+    const videoFormatsEl = document.getElementById('grab-video-formats');
+    const audioFormatsEl = document.getElementById('grab-audio-formats');
     videoFormatsEl.innerHTML = '';
     audioFormatsEl.innerHTML = '';
 
@@ -324,31 +324,31 @@ async function loadFormats(url) {
     // Auto-select first format
     if (videoFormats.length > 0) {
       selectedFormat = videoFormats[0];
-      document.getElementById('vidgrab-add-queue').disabled = false;
+      document.getElementById('grab-add-queue').disabled = false;
     }
 
-    showState('vidgrab-formats');
+    showState('grab-formats');
   } catch (error) {
-    console.error('VidGrab error:', error);
-    document.getElementById('vidgrab-error-msg').textContent = `// ${error.message || 'Failed to load formats'}`;
-    showState('vidgrab-error');
+    console.error('Grab error:', error);
+    document.getElementById('grab-error-msg').textContent = `// ${error.message || 'Failed to load formats'}`;
+    showState('grab-error');
   }
 }
 
 // Create format button
 function createFormatButton(format, selected) {
   const btn = document.createElement('button');
-  btn.className = `vidgrab-format-btn ${selected ? 'selected' : ''}`;
+  btn.className = `grab-format-btn ${selected ? 'selected' : ''}`;
   btn.innerHTML = `
-    <span class="vidgrab-format-quality">${format.quality}</span>
-    <span class="vidgrab-format-ext">${format.ext.toUpperCase()}</span>
+    <span class="grab-format-quality">${format.quality}</span>
+    <span class="grab-format-ext">${format.ext.toUpperCase()}</span>
   `;
 
   btn.addEventListener('click', () => {
-    document.querySelectorAll('.vidgrab-format-btn').forEach(b => b.classList.remove('selected'));
+    document.querySelectorAll('.grab-format-btn').forEach(b => b.classList.remove('selected'));
     btn.classList.add('selected');
     selectedFormat = format;
-    document.getElementById('vidgrab-add-queue').disabled = false;
+    document.getElementById('grab-add-queue').disabled = false;
   });
 
   return btn;
@@ -358,9 +358,9 @@ function createFormatButton(format, selected) {
 async function addToQueue() {
   if (!selectedFormat || !currentVideoUrl || !videoInfo) return;
 
-  const btn = document.getElementById('vidgrab-add-queue');
+  const btn = document.getElementById('grab-add-queue');
   btn.disabled = true;
-  btn.innerHTML = '<div class="vidgrab-spinner-small"></div><span>ADDING...</span>';
+  btn.innerHTML = '<div class="grab-spinner-small"></div><span>ADDING...</span>';
 
   try {
     const result = await sendMessage({
@@ -378,11 +378,11 @@ async function addToQueue() {
       throw new Error(result.error);
     }
 
-    document.getElementById('vidgrab-success-msg').textContent = `// Added at position ${result.position}`;
-    showState('vidgrab-success');
+    document.getElementById('grab-success-msg').textContent = `// Added at position ${result.position}`;
+    showState('grab-success');
   } catch (error) {
-    document.getElementById('vidgrab-error-msg').textContent = `// ${error.message || 'Failed to add to queue'}`;
-    showState('vidgrab-error');
+    document.getElementById('grab-error-msg').textContent = `// ${error.message || 'Failed to add to queue'}`;
+    showState('grab-error');
   } finally {
     btn.disabled = false;
     btn.innerHTML = `
@@ -431,11 +431,11 @@ function sendMessage(message) {
 
 // Show notification toast
 function showNotification(message, type = 'info') {
-  const existing = document.querySelector('.vidgrab-notification');
+  const existing = document.querySelector('.grab-notification');
   if (existing) existing.remove();
 
   const notification = document.createElement('div');
-  notification.className = `vidgrab-notification ${type}`;
+  notification.className = `grab-notification ${type}`;
   notification.textContent = message;
   document.body.appendChild(notification);
 
@@ -449,10 +449,10 @@ function showNotification(message, type = 'info') {
 
 // Remove all injected buttons
 function removeAllButtons() {
-  const videoWrapper = document.getElementById('vidgrab-btn-wrapper');
+  const videoWrapper = document.getElementById('grab-btn-wrapper');
   if (videoWrapper) videoWrapper.remove();
 
-  const playlistWrapper = document.getElementById('vidgrab-playlist-wrapper');
+  const playlistWrapper = document.getElementById('grab-playlist-wrapper');
   if (playlistWrapper) playlistWrapper.remove();
 
   downloadButton = null;
@@ -476,7 +476,7 @@ function getVideoCount() {
 // Inject button for video pages
 function injectVideoButton() {
   // Don't inject if already present
-  if (document.getElementById('vidgrab-download-btn')) return true;
+  if (document.getElementById('grab-download-btn')) return true;
 
   // Try to find the action buttons container (below video)
   const actionBar = document.querySelector('#top-level-buttons-computed');
@@ -486,8 +486,8 @@ function injectVideoButton() {
 
     // Create a wrapper to match YouTube's button styling
     const wrapper = document.createElement('div');
-    wrapper.id = 'vidgrab-btn-wrapper';
-    wrapper.className = 'vidgrab-btn-wrapper';
+    wrapper.id = 'grab-btn-wrapper';
+    wrapper.className = 'grab-btn-wrapper';
     wrapper.appendChild(downloadButton);
 
     // Insert after the share button or at the end
@@ -509,7 +509,7 @@ function injectVideoButton() {
 // Inject button for playlist pages
 function injectPlaylistButton() {
   // Don't inject if already present
-  if (document.getElementById('vidgrab-playlist-btn')) return true;
+  if (document.getElementById('grab-playlist-btn')) return true;
 
   // Find playlist header area - try multiple selectors for different playlist layouts
   const selectors = [
@@ -540,8 +540,8 @@ function injectPlaylistButton() {
     playlistButton = createPlaylistButton('playlist', count);
 
     const wrapper = document.createElement('div');
-    wrapper.id = 'vidgrab-playlist-wrapper';
-    wrapper.className = 'vidgrab-playlist-wrapper';
+    wrapper.id = 'grab-playlist-wrapper';
+    wrapper.className = 'grab-playlist-wrapper';
     wrapper.appendChild(playlistButton);
 
     // Try to insert in a good spot
@@ -566,7 +566,7 @@ function injectPlaylistButton() {
 // Inject button for channel pages
 function injectChannelButton() {
   // Don't inject if already present
-  if (document.getElementById('vidgrab-playlist-btn')) return true;
+  if (document.getElementById('grab-playlist-btn')) return true;
 
   // Find channel header area - try multiple selectors for different channel layouts
   const selectors = [
@@ -595,8 +595,8 @@ function injectChannelButton() {
     playlistButton = createPlaylistButton('channel');
 
     const wrapper = document.createElement('div');
-    wrapper.id = 'vidgrab-playlist-wrapper';
-    wrapper.className = 'vidgrab-playlist-wrapper vidgrab-channel-wrapper';
+    wrapper.id = 'grab-playlist-wrapper';
+    wrapper.className = 'grab-playlist-wrapper grab-channel-wrapper';
     wrapper.appendChild(playlistButton);
 
     // Find buttons area in channel header
@@ -763,8 +763,8 @@ function watchForNavigation() {
     if (!pageType) return;
 
     const hasButton = (pageType === 'video' || pageType === 'shorts')
-      ? document.getElementById('vidgrab-download-btn')
-      : document.getElementById('vidgrab-playlist-btn');
+      ? document.getElementById('grab-download-btn')
+      : document.getElementById('grab-playlist-btn');
 
     if (!hasButton && injectionAttempts < 50) {
       // Check if action bar exists now
@@ -817,8 +817,8 @@ function watchForNavigation() {
     // Check if button should be there but isn't
     if (pageType && injectionAttempts < 50) {
       const hasButton = (pageType === 'video' || pageType === 'shorts')
-        ? document.getElementById('vidgrab-download-btn')
-        : document.getElementById('vidgrab-playlist-btn');
+        ? document.getElementById('grab-download-btn')
+        : document.getElementById('grab-playlist-btn');
 
       if (!hasButton) {
         injectionAttempts++;
