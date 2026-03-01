@@ -123,7 +123,7 @@
         "AppImage",
         "deb"
       ],
-      "icon": "resources/icon.png",
+      "icon": "build",
       "category": "AudioVideo",
       "synopsis": "Media Downloader",
       "description": "Universal media downloader supporting 1000+ platforms. Download videos, audio, playlists, and channels with ease. Powered by yt-dlp."
