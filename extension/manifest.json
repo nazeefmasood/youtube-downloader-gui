@@ -2,7 +2,7 @@
   "manifest_version": 3,
   "name": "Grab - Media Downloader",
   "description": "Download videos and media from 1000+ platforms directly to Grab desktop app. Supports YouTube, TikTok, Twitch, Twitter, Instagram, Reddit, Vimeo, Facebook, and more.",
-  "version": "1.7.0",
+  "version": "1.7.1",
   "permissions": [
     "activeTab",
     "storage"

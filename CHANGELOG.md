@@ -2,6 +2,23 @@
 
 All notable changes to Grab will be documented in this file.
 
+## [1.7.1] - 2026-03-02
+
+### Fixed
+- **Windows ICO Format** — Fixed icon.ico not being a valid Windows ICO file
+  - Was incorrectly saved as PNG, causing Windows builds to fail
+  - Now properly converted to multi-resolution ICO format (16-256px)
+- **All Icons Updated** — Regenerated all icons from new Grab logo
+  - Desktop app icons (resources, assets)
+  - Browser extension icons (16, 32, 48, 128px)
+  - Proper favicon reference in index.html
+
+### Changed
+- **Branding Update** — "Video Downloader" → "Media Downloader"
+  - Updated app title, descriptions, and README
+  - Grab downloads videos, audio, playlists, and channels - not just videos
+  - Updated extension name and description
+
 ## [1.7.0] - 2026-03-01
 
 ### Breaking Changes
