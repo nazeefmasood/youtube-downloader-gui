@@ -2,6 +2,20 @@
 
 All notable changes to Grab will be documented in this file.
 
+## [1.7.2] - 2026-03-02
+
+### Fixed
+- **Linux App Icon** — Fixed app icon not showing on Linux
+  - Added build/ directory with proper icon sizes (16-1024px)
+  - Updated electron-builder config to use build directory for Linux
+  - Icon now displays correctly in app launcher and dock
+- **CI Workflow** — Fixed bash syntax error on Windows
+  - Added explicit `shell: bash` to install step
+  - Renamed artifacts from vidgrab-* to grab-*
+
+### Changed
+- **Web App Favicon** — Added favicon.ico to public root for proper serving
+
 ## [1.7.1] - 2026-03-02
 
 ### Fixed
